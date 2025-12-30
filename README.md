@@ -5,6 +5,8 @@
 
 A lightweight, embeddable scripting language interpreter for Dart/Flutter applications.
 
+📖 **Documentation complète** : [docs-kodiscript.dickode.net](https://docs-kodiscript.dickode.net/)
+
 ## Installation
 
 Add to your `pubspec.yaml`:
@@ -51,7 +53,11 @@ void main() {
 - **Null Safety**: `?.` (safe access), `?:` (elvis operator)
 - **48+ Native Functions**: string, math, random, type, array, JSON, encoding, crypto
 
-## Custom Functions
+## 🔌 Extensibilité
+
+KodiScript est conçu pour être **extensible**. Vous pouvez enrichir le langage en ajoutant vos propres fonctions natives.
+
+### Fonctions personnalisées
 
 ```dart
 final result = KodiScript.builder('greet("Dart")')
@@ -60,6 +66,41 @@ final result = KodiScript.builder('greet("Dart")')
 
 print(result.value); // "Hello, Dart!"
 ```
+
+### Exemple : intégration Flutter
+
+```dart
+class ScriptEngine {
+  final UserRepository userRepo;
+  final NotificationService notifications;
+  
+  ScriptEngine(this.userRepo, this.notifications);
+  
+  Future<ScriptResult> execute(String script, Map<String, dynamic> context) {
+    return KodiScript.builder(script)
+      .withVariables(context)
+      .registerFunction('fetchUser', (args) async {
+        return await userRepo.findById(args[0] as int);
+      })
+      .registerFunction('sendPush', (args) {
+        notifications.send(
+          title: args[0] as String,
+          body: args[1] as String,
+        );
+        return true;
+      })
+      .registerFunction('calculatePrice', (args) {
+        final quantity = args[0] as num;
+        final unitPrice = args[1] as num;
+        final discount = args.length > 2 ? args[2] as num : 0;
+        return quantity * unitPrice * (1 - discount / 100);
+      })
+      .execute();
+  }
+}
+```
+
+Cela permet à vos utilisateurs d'écrire des scripts puissants tout en gardant le contrôle sur les fonctionnalités exposées.
 
 ## API Reference
 

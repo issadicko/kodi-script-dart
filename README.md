@@ -1,6 +1,9 @@
 # KodiScript Dart SDK
 
-A lightweight, embeddable scripting language for Dart applications.
+[![pub package](https://img.shields.io/pub/v/kodi_script.svg)](https://pub.dev/packages/kodi_script)
+[![Release](https://img.shields.io/github/v/release/issadicko/kodi-script-dart)](https://github.com/issadicko/kodi-script-dart/releases)
+
+A lightweight, embeddable scripting language interpreter for Dart/Flutter applications.
 
 ## Installation
 
@@ -8,7 +11,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  kodi_script: ^1.0.0
+  kodi_script: ^0.0.1
 ```
 
 ## Quick Start
@@ -81,6 +84,14 @@ Creates a builder for advanced configuration.
 | JSON | `jsonParse`, `jsonStringify` |
 | Encoding | `base64Encode`, `base64Decode`, `urlEncode`, `urlDecode` |
 | Crypto | `md5`, `sha1`, `sha256` |
+
+## Other Implementations
+
+| Language | Package |
+|----------|---------|  
+| **Kotlin** | [Maven Central](https://central.sonatype.com/artifact/io.github.issadicko/kodi-script) |
+| **Go** | [pkg.go.dev](https://pkg.go.dev/github.com/issadicko/kodi-script-go) |
+| **TypeScript** | [npm](https://www.npmjs.com/package/@issadicko/kodi-script) |
 
 ## License
 

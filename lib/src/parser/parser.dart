@@ -53,6 +53,7 @@ class Parser {
     _prefixParseFns[TokenType.ident] = _parseIdentifier;
     _prefixParseFns[TokenType.number] = _parseNumberLiteral;
     _prefixParseFns[TokenType.string] = _parseStringLiteral;
+    _prefixParseFns[TokenType.stringTemplate] = _parseStringTemplate;
     _prefixParseFns[TokenType.trueKeyword] = _parseBooleanLiteral;
     _prefixParseFns[TokenType.falseKeyword] = _parseBooleanLiteral;
     _prefixParseFns[TokenType.nullKeyword] = _parseNullLiteral;
@@ -313,6 +314,61 @@ class Parser {
   }
 
   Expression _parseStringLiteral() => StringLiteral(_curToken, _curToken.literal);
+
+  Expression? _parseStringTemplate() {
+    final token = _curToken;
+    final parts = <Expression>[];
+    final literal = _curToken.literal;
+    var i = 0;
+
+    while (i < literal.length) {
+      // Find next ${
+      final start = i;
+      while (i < literal.length &&
+          !(i + 1 < literal.length && literal[i] == '\$' && literal[i + 1] == '{')) {
+        i++;
+      }
+
+      // Add string part if non-empty
+      if (i > start) {
+        final strToken = Token(TokenType.string, literal.substring(start, i));
+        parts.add(StringLiteral(strToken, literal.substring(start, i)));
+      }
+
+      // If we found ${, parse the expression
+      if (i + 1 < literal.length && literal[i] == '\$' && literal[i + 1] == '{') {
+        i += 2; // skip ${
+
+        // Find matching }
+        var braceCount = 1;
+        final exprStart = i;
+        while (i < literal.length && braceCount > 0) {
+          if (literal[i] == '{') braceCount++;
+          else if (literal[i] == '}') braceCount--;
+          if (braceCount > 0) i++;
+        }
+
+        // Extract and parse the expression
+        final exprStr = literal.substring(exprStart, i);
+        if (i < literal.length) i++; // skip closing }
+
+        // Create a new lexer and parser for the expression
+        final exprLexer = Lexer(exprStr);
+        final exprParser = Parser(exprLexer);
+        final expr = exprParser._parseExpression(_lowest);
+
+        if (exprParser.errors().isNotEmpty) {
+          _errors.addAll(exprParser.errors());
+        }
+
+        if (expr != null) {
+          parts.add(expr);
+        }
+      }
+    }
+
+    return StringTemplate(token, parts);
+  }
 
   Expression _parseBooleanLiteral() =>
       BooleanLiteral(_curToken, _curTokenIs(TokenType.trueKeyword));

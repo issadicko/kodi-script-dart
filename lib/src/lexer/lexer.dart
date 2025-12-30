@@ -141,8 +141,9 @@ class Lexer {
       case '.':
         tok = Token(TokenType.dot, '.', line: _line, column: startColumn);
       case '"':
-        final str = _readString();
-        tok = Token(TokenType.string, str, line: _line, column: startColumn);
+        final result = _readString();
+        final type = result.isTemplate ? TokenType.stringTemplate : TokenType.string;
+        tok = Token(type, result.value, line: _line, column: startColumn);
       default:
         if (_isLetter(_ch)) {
           final ident = _readIdentifier();
@@ -204,9 +205,10 @@ class Lexer {
     return _input.substring(start, _position);
   }
 
-  String _readString() {
+  ({String value, bool isTemplate}) _readString() {
     _readChar(); // skip opening "
     final buffer = StringBuffer();
+    var isTemplate = false;
     while (_ch != '"' && _ch != '') {
       if (_ch == '\\') {
         _readChar();
@@ -221,16 +223,24 @@ class Lexer {
             buffer.write('"');
           case '\\':
             buffer.write('\\');
+          case '\$':
+            buffer.write('\$');
           default:
             buffer.write('\\');
             buffer.write(_ch);
         }
+      } else if (_ch == '\$' && _peekChar() == '{') {
+        // Template expression detected
+        isTemplate = true;
+        buffer.write('\$');
+        buffer.write('{');
+        _readChar(); // consume $
       } else {
         buffer.write(_ch);
       }
       _readChar();
     }
-    return buffer.toString();
+    return (value: buffer.toString(), isTemplate: isTemplate);
   }
 
   bool _isLetter(String ch) {

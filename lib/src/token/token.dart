@@ -12,6 +12,7 @@ enum TokenType {
   ident,
   number,
   string,
+  stringTemplate,
 
   // Operators
   assign, // =
@@ -66,6 +67,7 @@ enum TokenType {
         TokenType.ident,
         TokenType.number,
         TokenType.string,
+        TokenType.stringTemplate,
         TokenType.trueKeyword,
         TokenType.falseKeyword,
         TokenType.nullKeyword,

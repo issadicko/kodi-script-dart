@@ -147,12 +147,27 @@ class Interpreter {
     return result;
   }
 
+  String _evalStringTemplate(StringTemplate tmpl) {
+    final buffer = StringBuffer();
+    for (final part in tmpl.parts) {
+      final value = _evalExpression(part);
+      if (value == null) {
+        buffer.write('null');
+      } else {
+        buffer.write(value.toString());
+      }
+    }
+    return buffer.toString();
+  }
+
   Object? _evalExpression(Expression expr) {
     switch (expr) {
       case NumberLiteral():
         return expr.value;
       case StringLiteral():
         return expr.value;
+      case StringTemplate():
+        return _evalStringTemplate(expr);
       case BooleanLiteral():
         return expr.value;
       case NullLiteral():

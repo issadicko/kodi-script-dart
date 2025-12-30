@@ -141,6 +141,17 @@ class StringLiteral extends Expression {
   String tokenLiteral() => token.literal;
 }
 
+/// String template: "Hello ${name}!"
+class StringTemplate extends Expression {
+  final Token token;
+  final List<Expression> parts;
+
+  StringTemplate(this.token, this.parts);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
 /// Boolean literal (true/false).
 class BooleanLiteral extends Expression {
   final Token token;

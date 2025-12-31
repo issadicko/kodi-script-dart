@@ -1,6 +1,8 @@
 /// KodiScript Interpreter - Evaluates AST nodes.
 library;
 
+import 'dart:developer';
+
 import '../ast/ast.dart';
 import '../natives/natives.dart';
 
@@ -317,7 +319,9 @@ class Interpreter {
     if (funcExpr is Identifier && funcExpr.value == 'print') {
       final args = expr.arguments.map((a) => _evalExpression(a)).toList();
       for (final arg in args) {
-        _env.addOutput(arg?.toString() ?? 'null');
+        final output = arg?.toString() ?? 'null';
+        log(output, name: 'KodiScript');
+        _env.addOutput(output);
       }
       return null;
     }

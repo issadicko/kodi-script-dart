@@ -205,5 +205,102 @@ void main() {
         expect(result.value, equals(42.0));
       });
     });
+
+    group('Date/Time Functions', () {
+      test('now returns timestamp', () {
+        final ts = KodiScript.eval('now()') as double;
+        expect(ts, greaterThan(1700000000000)); // After Nov 2023
+      });
+
+      test('date returns YYYY-MM-DD format', () {
+        final dateStr = KodiScript.eval('date()') as String;
+        expect(dateStr.length, equals(10));
+        expect(dateStr[4], equals('-'));
+      });
+
+      test('time returns HH:MM:SS format', () {
+        final timeStr = KodiScript.eval('time()') as String;
+        expect(timeStr.length, equals(8));
+        expect(timeStr[2], equals(':'));
+      });
+
+      test('datetime returns ISO format', () {
+        final dtStr = KodiScript.eval('datetime()') as String;
+        expect(dtStr.contains('T'), isTrue);
+      });
+
+      test('year, month, day extract components', () {
+        final year = KodiScript.eval('year()') as double;
+        expect(year, greaterThanOrEqualTo(2024));
+
+        final month = KodiScript.eval('month()') as double;
+        expect(month, inInclusiveRange(1, 12));
+
+        final day = KodiScript.eval('day()') as double;
+        expect(day, inInclusiveRange(1, 31));
+      });
+
+      test('hour, minute, second extract components', () {
+        final hour = KodiScript.eval('hour()') as double;
+        expect(hour, inInclusiveRange(0, 23));
+
+        final minute = KodiScript.eval('minute()') as double;
+        expect(minute, inInclusiveRange(0, 59));
+
+        final second = KodiScript.eval('second()') as double;
+        expect(second, inInclusiveRange(0, 59));
+      });
+
+      test('dayOfWeek returns 0-6', () {
+        final dow = KodiScript.eval('dayOfWeek()') as double;
+        expect(dow, inInclusiveRange(0, 6));
+      });
+
+      test('timestamp parses date string', () {
+        final ts = KodiScript.eval('timestamp("2024-12-25")') as double;
+        expect(ts, greaterThan(0));
+      });
+
+      test('formatDate formats timestamp', () {
+        final result = KodiScript.eval('''
+          let ts = timestamp("2024-12-25")
+          formatDate(ts, "DD/MM/YYYY")
+        ''');
+        expect(result, equals('25/12/2024'));
+      });
+
+      test('year, month, day from specific date', () {
+        expect(KodiScript.eval('year(timestamp("2024-12-25"))'), equals(2024.0));
+        expect(KodiScript.eval('month(timestamp("2024-12-25"))'), equals(12.0));
+        expect(KodiScript.eval('day(timestamp("2024-12-25"))'), equals(25.0));
+      });
+
+      test('addDays adds days to timestamp', () {
+        final result = KodiScript.eval('''
+          let ts = timestamp("2024-01-01")
+          let nextWeek = addDays(ts, 7)
+          day(nextWeek)
+        ''');
+        expect(result, equals(8.0));
+      });
+
+      test('diffDays calculates difference', () {
+        final result = KodiScript.eval('''
+          let ts1 = timestamp("2024-01-01")
+          let ts2 = timestamp("2024-01-08")
+          diffDays(ts1, ts2)
+        ''');
+        expect(result, equals(7.0));
+      });
+
+      test('addHours adds hours to timestamp', () {
+        final result = KodiScript.eval('''
+          let ts = now()
+          let later = addHours(ts, 24)
+          diffDays(ts, later)
+        ''');
+        expect(result, equals(1.0));
+      });
+    });
   });
 }

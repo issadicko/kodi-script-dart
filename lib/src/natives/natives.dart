@@ -99,6 +99,24 @@ class NativeFunctions {
     _functions['first'] = _nativeFirst;
     _functions['last'] = _nativeLast;
     _functions['slice'] = _nativeSlice;
+
+    // Date/Time functions
+    _functions['now'] = _nativeNow;
+    _functions['date'] = _nativeDate;
+    _functions['time'] = _nativeTime;
+    _functions['datetime'] = _nativeDatetime;
+    _functions['timestamp'] = _nativeTimestamp;
+    _functions['formatDate'] = _nativeFormatDate;
+    _functions['year'] = _nativeYear;
+    _functions['month'] = _nativeMonth;
+    _functions['day'] = _nativeDay;
+    _functions['hour'] = _nativeHour;
+    _functions['minute'] = _nativeMinute;
+    _functions['second'] = _nativeSecond;
+    _functions['dayOfWeek'] = _nativeDayOfWeek;
+    _functions['addDays'] = _nativeAddDays;
+    _functions['addHours'] = _nativeAddHours;
+    _functions['diffDays'] = _nativeDiffDays;
   }
 
   // ============ String functions ============
@@ -471,5 +489,121 @@ class NativeFunctions {
     if (value is double) return value;
     if (value is int) return value.toDouble();
     return null;
+  }
+
+  // ============ Date/Time functions ============
+
+  Object? _nativeNow(List<Object?> args) {
+    if (args.isNotEmpty) throw ArgumentError('now takes no arguments');
+    return DateTime.now().millisecondsSinceEpoch.toDouble();
+  }
+
+  Object? _nativeDate(List<Object?> args) {
+    if (args.isNotEmpty) throw ArgumentError('date takes no arguments');
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  Object? _nativeTime(List<Object?> args) {
+    if (args.isNotEmpty) throw ArgumentError('time takes no arguments');
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+  }
+
+  Object? _nativeDatetime(List<Object?> args) {
+    if (args.isNotEmpty) throw ArgumentError('datetime takes no arguments');
+    return DateTime.now().toIso8601String();
+  }
+
+  Object? _nativeTimestamp(List<Object?> args) {
+    if (args.isEmpty) {
+      return DateTime.now().millisecondsSinceEpoch.toDouble();
+    }
+    final dateStr = args[0] as String;
+    final parsed = DateTime.tryParse(dateStr);
+    if (parsed == null) {
+      throw ArgumentError('cannot parse date: $dateStr');
+    }
+    return parsed.millisecondsSinceEpoch.toDouble();
+  }
+
+  Object? _nativeFormatDate(List<Object?> args) {
+    if (args.isEmpty || args.length > 2) {
+      throw ArgumentError('formatDate requires 1 or 2 arguments');
+    }
+    final ts = _toDouble(args[0]).toInt();
+    final format = args.length == 2 ? args[1] as String : 'YYYY-MM-DD';
+    final date = DateTime.fromMillisecondsSinceEpoch(ts);
+    
+    var result = format;
+    result = result.replaceAll('YYYY', date.year.toString().padLeft(4, '0'));
+    result = result.replaceAll('MM', date.month.toString().padLeft(2, '0'));
+    result = result.replaceAll('DD', date.day.toString().padLeft(2, '0'));
+    result = result.replaceAll('HH', date.hour.toString().padLeft(2, '0'));
+    result = result.replaceAll('mm', date.minute.toString().padLeft(2, '0'));
+    result = result.replaceAll('ss', date.second.toString().padLeft(2, '0'));
+    return result;
+  }
+
+  Object? _nativeYear(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).year.toDouble();
+  }
+
+  Object? _nativeMonth(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).month.toDouble();
+  }
+
+  Object? _nativeDay(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).day.toDouble();
+  }
+
+  Object? _nativeHour(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).hour.toDouble();
+  }
+
+  Object? _nativeMinute(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).minute.toDouble();
+  }
+
+  Object? _nativeSecond(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    return DateTime.fromMillisecondsSinceEpoch(ts).second.toDouble();
+  }
+
+  Object? _nativeDayOfWeek(List<Object?> args) {
+    final ts = args.isEmpty ? DateTime.now().millisecondsSinceEpoch : _toDouble(args[0]).toInt();
+    // Dart: weekday is 1=Monday, 7=Sunday. We want 0=Sunday.
+    final weekday = DateTime.fromMillisecondsSinceEpoch(ts).weekday;
+    return (weekday == 7 ? 0 : weekday).toDouble();
+  }
+
+  Object? _nativeAddDays(List<Object?> args) {
+    _requireArgs(args, 2, 'addDays');
+    final ts = _toDouble(args[0]).toInt();
+    final days = _toDouble(args[1]).toInt();
+    final date = DateTime.fromMillisecondsSinceEpoch(ts);
+    return date.add(Duration(days: days)).millisecondsSinceEpoch.toDouble();
+  }
+
+  Object? _nativeAddHours(List<Object?> args) {
+    _requireArgs(args, 2, 'addHours');
+    final ts = _toDouble(args[0]).toInt();
+    final hours = _toDouble(args[1]).toInt();
+    final date = DateTime.fromMillisecondsSinceEpoch(ts);
+    return date.add(Duration(hours: hours)).millisecondsSinceEpoch.toDouble();
+  }
+
+  Object? _nativeDiffDays(List<Object?> args) {
+    _requireArgs(args, 2, 'diffDays');
+    final ts1 = _toDouble(args[0]).toInt();
+    final ts2 = _toDouble(args[1]).toInt();
+    final d1 = DateTime.fromMillisecondsSinceEpoch(ts1);
+    final d2 = DateTime.fromMillisecondsSinceEpoch(ts2);
+    return d2.difference(d1).inDays.toDouble();
   }
 }

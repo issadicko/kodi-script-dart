@@ -125,6 +125,7 @@ Creates a builder for advanced configuration.
 | JSON | `jsonParse`, `jsonStringify` |
 | Encoding | `base64Encode`, `base64Decode`, `urlEncode`, `urlDecode` |
 | Crypto | `md5`, `sha1`, `sha256` |
+| Date/Time | `now`, `date`, `time`, `datetime`, `timestamp`, `formatDate`, `year`, `month`, `day`, `hour`, `minute`, `second`, `dayOfWeek`, `addDays`, `addHours`, `diffDays` |
 
 ## Other Implementations
 

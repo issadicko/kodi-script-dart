@@ -20,6 +20,7 @@ enum TokenType {
   minus, // -
   asterisk, // *
   slash, // /
+  percent, // %
 
   // Comparison
   eq, // ==
@@ -82,6 +83,7 @@ enum TokenType {
         TokenType.minus,
         TokenType.asterisk,
         TokenType.slash,
+        TokenType.percent,
         TokenType.and,
         TokenType.or,
         TokenType.eq,

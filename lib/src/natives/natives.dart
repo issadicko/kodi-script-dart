@@ -46,6 +46,9 @@ class NativeFunctions {
     _functions['startsWith'] = _nativeStartsWith;
     _functions['endsWith'] = _nativeEndsWith;
     _functions['indexOf'] = _nativeIndexOf;
+    _functions['padLeft'] = _nativePadLeft;
+    _functions['padRight'] = _nativePadRight;
+    _functions['repeat'] = _nativeRepeat;
 
     // JSON functions
     _functions['jsonParse'] = _nativeJsonParse;
@@ -207,6 +210,29 @@ class NativeFunctions {
   Object? _nativeIndexOf(List<Object?> args) {
     _requireArgs(args, 2, 'indexOf');
     return (args[0] as String).indexOf(args[1] as String).toDouble();
+  }
+
+  Object? _nativePadLeft(List<Object?> args) {
+    if (args.length < 2) throw Exception('padLeft requires at least 2 arguments');
+    final str = args[0]?.toString() ?? '';
+    final length = (args[1] as num).toInt();
+    final padChar = args.length > 2 ? (args[2]?.toString() ?? ' ').substring(0, 1) : ' ';
+    return str.padLeft(length, padChar);
+  }
+
+  Object? _nativePadRight(List<Object?> args) {
+    if (args.length < 2) throw Exception('padRight requires at least 2 arguments');
+    final str = args[0]?.toString() ?? '';
+    final length = (args[1] as num).toInt();
+    final padChar = args.length > 2 ? (args[2]?.toString() ?? ' ').substring(0, 1) : ' ';
+    return str.padRight(length, padChar);
+  }
+
+  Object? _nativeRepeat(List<Object?> args) {
+    _requireArgs(args, 2, 'repeat');
+    final str = args[0]?.toString() ?? '';
+    final count = (args[1] as num).toInt().clamp(0, 1000000);
+    return str * count;
   }
 
   // ============ JSON functions ============

@@ -32,6 +32,7 @@ final Map<TokenType, int> _precedences = {
   TokenType.minus: _sum,
   TokenType.asterisk: _product,
   TokenType.slash: _product,
+  TokenType.percent: _product,
   TokenType.lparen: _call,
   TokenType.lbracket: _access,
   TokenType.dot: _access,
@@ -69,6 +70,7 @@ class Parser {
     _infixParseFns[TokenType.minus] = _parseInfixExpression;
     _infixParseFns[TokenType.asterisk] = _parseInfixExpression;
     _infixParseFns[TokenType.slash] = _parseInfixExpression;
+    _infixParseFns[TokenType.percent] = _parseInfixExpression;
     _infixParseFns[TokenType.eq] = _parseInfixExpression;
     _infixParseFns[TokenType.notEq] = _parseInfixExpression;
     _infixParseFns[TokenType.lt] = _parseInfixExpression;

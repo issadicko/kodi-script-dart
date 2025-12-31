@@ -249,6 +249,10 @@ class Interpreter {
         final r = _toNumber(right);
         if (r == 0) throw Exception('division by zero');
         return _toNumber(left) / r;
+      case '%':
+        final r = _toNumber(right);
+        if (r == 0) throw Exception('modulo by zero');
+        return _toNumber(left) % r;
       case '==':
         return left == right;
       case '!=':
@@ -326,10 +330,98 @@ class Interpreter {
       return null;
     }
 
+    // Special handling for higher-order array functions
+    if (funcExpr is Identifier) {
+      switch (funcExpr.value) {
+        case 'map':
+          return _evalMapFunction(expr);
+        case 'filter':
+          return _evalFilterFunction(expr);
+        case 'reduce':
+          return _evalReduceFunction(expr);
+        case 'find':
+          return _evalFindFunction(expr);
+        case 'findIndex':
+          return _evalFindIndexFunction(expr);
+      }
+    }
+
     final function = _evalExpression(funcExpr);
     final args = expr.arguments.map((a) => _evalExpression(a)).toList();
 
     return _applyFunction(function, args);
+  }
+
+  Object? _evalMapFunction(CallExpr expr) {
+    if (expr.arguments.length < 2) {
+      throw Exception('map requires 2 arguments: array and function');
+    }
+    final arrVal = _evalExpression(expr.arguments[0]);
+    if (arrVal is! List) return <Object?>[];
+    final fnVal = _evalExpression(expr.arguments[1]);
+    return arrVal.asMap().entries.map((e) => 
+      _applyFunction(fnVal, [e.value, e.key.toDouble()])
+    ).toList();
+  }
+
+  Object? _evalFilterFunction(CallExpr expr) {
+    if (expr.arguments.length < 2) {
+      throw Exception('filter requires 2 arguments: array and function');
+    }
+    final arrVal = _evalExpression(expr.arguments[0]);
+    if (arrVal is! List) return <Object?>[];
+    final fnVal = _evalExpression(expr.arguments[1]);
+    final result = <Object?>[];
+    for (var i = 0; i < arrVal.length; i++) {
+      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
+        result.add(arrVal[i]);
+      }
+    }
+    return result;
+  }
+
+  Object? _evalReduceFunction(CallExpr expr) {
+    if (expr.arguments.length < 3) {
+      throw Exception('reduce requires 3 arguments: array, function, and initial value');
+    }
+    final arrVal = _evalExpression(expr.arguments[0]);
+    if (arrVal is! List) return null;
+    final fnVal = _evalExpression(expr.arguments[1]);
+    var accumulator = _evalExpression(expr.arguments[2]);
+    for (var i = 0; i < arrVal.length; i++) {
+      accumulator = _applyFunction(fnVal, [accumulator, arrVal[i], i.toDouble()]);
+    }
+    return accumulator;
+  }
+
+  Object? _evalFindFunction(CallExpr expr) {
+    if (expr.arguments.length < 2) {
+      throw Exception('find requires 2 arguments: array and function');
+    }
+    final arrVal = _evalExpression(expr.arguments[0]);
+    if (arrVal is! List) return null;
+    final fnVal = _evalExpression(expr.arguments[1]);
+    for (var i = 0; i < arrVal.length; i++) {
+      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
+        return arrVal[i];
+      }
+    }
+    return null;
+  }
+
+  Object? _evalFindIndexFunction(CallExpr expr) {
+    if (expr.arguments.length < 2) {
+      throw Exception('findIndex requires 2 arguments: array and function');
+    }
+    final arrVal = _evalExpression(expr.arguments[0]);
+    if (arrVal is! List) return -1.0;
+    final fnVal = _evalExpression(expr.arguments[1]);
+    for (var i = 0; i < arrVal.length; i++) {
+      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
+        return i.toDouble();
+      }
+    }
+    return -1.0;
   }
 
   Object? _applyFunction(Object? fn, List<Object?> args) {

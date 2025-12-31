@@ -75,6 +75,8 @@ class Lexer {
           return nextToken();
         }
         tok = Token(TokenType.slash, '/', line: _line, column: startColumn);
+      case '%':
+        tok = Token(TokenType.percent, '%', line: _line, column: startColumn);
       case '!':
         if (_peekChar() == '=') {
           _readChar();

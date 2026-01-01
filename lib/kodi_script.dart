@@ -24,6 +24,7 @@ import 'src/lexer/lexer.dart';
 import 'src/parser/parser.dart';
 import 'src/interpreter/interpreter.dart';
 import 'src/natives/natives.dart';
+import 'src/cache/ast_cache.dart';
 
 /// Result of script execution.
 class ScriptResult {
@@ -45,14 +46,17 @@ class KodiScript {
   final String _source;
   final Map<String, Object?> _variables;
   final Map<String, NativeFunc> _customFunctions;
+  final bool _useCache;
 
   KodiScript._({
     required String source,
     Map<String, Object?>? variables,
     Map<String, NativeFunc>? customFunctions,
+    bool useCache = true,
   })  : _source = source,
         _variables = variables ?? {},
-        _customFunctions = customFunctions ?? {};
+        _customFunctions = customFunctions ?? {},
+        _useCache = useCache;
 
   /// Builder for KodiScript execution.
   static KodiScriptBuilder builder(String source) => KodiScriptBuilder(source);
@@ -74,15 +78,25 @@ class KodiScript {
   }
 
   ScriptResult _execute() {
-    // Lexer
-    final lexer = Lexer(_source);
+    // Try cache first
+    var program = _useCache ? ASTCache.defaultCache.get(_source) : null;
 
-    // Parser
-    final parser = Parser(lexer);
-    final program = parser.parseProgram();
+    if (program == null) {
+      // Lexer
+      final lexer = Lexer(_source);
 
-    if (parser.errors().isNotEmpty) {
-      return ScriptResult(errors: parser.errors());
+      // Parser
+      final parser = Parser(lexer);
+      program = parser.parseProgram();
+
+      if (parser.errors().isNotEmpty) {
+        return ScriptResult(errors: parser.errors());
+      }
+
+      // Store in cache
+      if (_useCache) {
+        ASTCache.defaultCache.set(_source, program);
+      }
     }
 
     // Use singleton for built-ins, create copy only if custom functions registered
@@ -113,6 +127,7 @@ class KodiScriptBuilder {
   final String _source;
   final Map<String, Object?> _variables = {};
   final Map<String, NativeFunc> _customFunctions = {};
+  bool _useCache = true;
 
   KodiScriptBuilder(this._source);
 
@@ -134,12 +149,19 @@ class KodiScriptBuilder {
     return this;
   }
 
+  /// Enable or disable AST caching.
+  KodiScriptBuilder withCache(bool enabled) {
+    _useCache = enabled;
+    return this;
+  }
+
   /// Execute the script.
   ScriptResult execute() {
     return KodiScript._(
       source: _source,
       variables: _variables,
       customFunctions: _customFunctions,
+      useCache: _useCache,
     )._execute();
   }
 }

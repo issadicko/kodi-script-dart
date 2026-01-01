@@ -1,17 +1,25 @@
-name: CI
+name: KodiScript CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: ["**"]
 
 jobs:
   test:
+    name: Test Dart SDK
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Checkout Compliance Tests
+        uses: actions/checkout@v4
+        with:
+          repository: issadicko/kodi-compliance-tests
+          path: compliance-tests
+        continue-on-error: true
       
       - name: Setup Dart
         uses: dart-lang/setup-dart@v1
@@ -25,4 +33,6 @@ jobs:
         run: dart analyze
       
       - name: Run tests
+        env:
+          KODI_COMPLIANCE_TESTS_PATH: ${{ github.workspace }}/compliance-tests
         run: dart test

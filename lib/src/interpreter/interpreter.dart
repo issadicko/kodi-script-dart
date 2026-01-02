@@ -2,6 +2,7 @@
 library;
 
 import 'dart:developer';
+import 'dart:mirrors';
 
 import '../ast/ast.dart';
 import '../natives/natives.dart';
@@ -53,10 +54,25 @@ class NativeFunctionValue {
   NativeFunctionValue(this.fn);
 }
 
+/// Exception thrown when max operations is exceeded.
+class MaxOperationsExceeded implements Exception {
+  @override
+  String toString() => 'max operations exceeded';
+}
+
+/// Exception thrown when execution timeout is exceeded.
+class TimeoutException implements Exception {
+  @override
+  String toString() => 'execution timeout';
+}
+
 /// Interpreter evaluates AST nodes.
 class Interpreter {
   Environment _env;
   final NativeFunctions _natives;
+  int _opCount = 0;
+  int _maxOps = 0; // 0 = unlimited
+  int _deadline = 0; // 0 = no timeout
 
   Interpreter({Environment? env, NativeFunctions? natives})
       : _env = env ?? Environment(),
@@ -66,6 +82,37 @@ class Interpreter {
     final env = Environment();
     variables.forEach((k, v) => env.set(k, v));
     return Interpreter(env: env);
+  }
+
+  /// Sets the maximum number of operations allowed.
+  /// If maxOps is 0, there is no limit (default).
+  void setMaxOperations(int maxOps) {
+    _maxOps = maxOps;
+    _opCount = 0;
+  }
+
+  /// Sets the execution deadline (milliseconds since epoch).
+  void setDeadline(int deadline) {
+    _deadline = deadline;
+  }
+
+  /// Checks the operation limit and throws if exceeded.
+  void _checkOperationLimit() {
+    if (_maxOps > 0) {
+      _opCount++;
+      if (_opCount > _maxOps) {
+        throw MaxOperationsExceeded();
+      }
+    }
+  }
+
+  /// Checks if the deadline has been exceeded.
+  void _checkDeadline() {
+    if (_deadline > 0) {
+      if (DateTime.now().millisecondsSinceEpoch > _deadline) {
+        throw TimeoutException();
+      }
+    }
   }
 
   Object? eval(Program program) {
@@ -82,6 +129,11 @@ class Interpreter {
   List<String> getOutput() => _env.getOutput();
 
   Object? _evalStatement(Statement stmt) {
+    // Check operation limit at each statement
+    _checkOperationLimit();
+    // Check deadline at each statement
+    _checkDeadline();
+
     switch (stmt) {
       case VarDecl():
         final value = _evalExpression(stmt.value);
@@ -127,6 +179,11 @@ class Interpreter {
     final varName = stmt.variable.value;
 
     for (final item in iterableVal) {
+      // Check operation limit at each iteration
+      _checkOperationLimit();
+      // Check deadline at each iteration
+      _checkDeadline();
+
       _env.set(varName, item);
       final value = _evalBlockStatement(stmt.body);
       if (value is ReturnValue) {
@@ -310,10 +367,13 @@ class Interpreter {
       throw Exception("cannot access property '${expr.property.value}' on null");
     }
 
+    // First check for map access (existing behavior)
     if (obj is Map) {
       return obj[expr.property.value];
     }
-    throw Exception('cannot access property on ${obj.runtimeType}');
+
+    // Use reflection to access methods and fields on Dart objects
+    return _reflectivePropertyAccess(obj, expr.property.value);
   }
 
   Object? _evalCallExpr(CallExpr expr) {
@@ -455,10 +515,87 @@ class Interpreter {
     return true;
   }
 
+
   double _toNumber(Object? value) {
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
+  }
+
+  // ============ Reflection Support ============
+
+  /// Uses mirrors to access properties on Dart objects.
+  Object? _reflectivePropertyAccess(Object obj, String propertyName) {
+    final instanceMirror = reflect(obj);
+
+    // Try to find a method (methods have priority over fields)
+    final classMirror = instanceMirror.type;
+    final methodSymbol = Symbol(propertyName);
+
+    if (classMirror.instanceMembers.containsKey(methodSymbol)) {
+      final member = classMirror.instanceMembers[methodSymbol]!;
+      if (member is MethodMirror && !member.isGetter) {
+        // Return a callable wrapper
+        return NativeFunctionValue((args) {
+          return _callReflectedMethod(instanceMirror, methodSymbol, args);
+        });
+      }
+    }
+
+    // Try to access a field or getter
+    try {
+      final result = instanceMirror.getField(methodSymbol);
+      return _convertFromDartType(result.reflectee);
+    } catch (e) {
+      throw Exception(
+          "property or method '$propertyName' not found on ${obj.runtimeType}");
+    }
+  }
+
+  /// Calls a Dart method via reflection.
+  Object? _callReflectedMethod(
+      InstanceMirror instance, Symbol methodName, List<Object?> args) {
+    try {
+      // Get method mirror to inspect parameter types
+      final classMirror = instance.type;
+      final methodMirror = classMirror.instanceMembers[methodName];
+
+      if (methodMirror != null && methodMirror is MethodMirror) {
+        // Convert arguments based on parameter types
+        final convertedArgs = <Object?>[];
+        for (var i = 0; i < args.length && i < methodMirror.parameters.length; i++) {
+          final param = methodMirror.parameters[i];
+          final arg = args[i];
+
+          // Check if parameter expects int but we have double
+          if (param.type.reflectedType == int && arg is double) {
+            convertedArgs.add(arg.toInt());
+          } else {
+            convertedArgs.add(arg);
+          }
+        }
+
+        final result = instance.invoke(methodName, convertedArgs);
+        return _convertFromDartType(result.reflectee);
+      }
+
+      // Fallback: invoke with original args
+      final result = instance.invoke(methodName, args);
+      return _convertFromDartType(result.reflectee);
+    } catch (e) {
+      throw Exception("error calling method: $e");
+    }
+  }
+
+  /// Converts a Dart value to a KodiScript-compatible value.
+  Object? _convertFromDartType(Object? value) {
+    if (value == null) return null;
+
+    // Convert Dart ints to doubles (KodiScript's number type)
+    if (value is int) return value.toDouble();
+
+    // Return other types as-is (String, double, bool, List, Map, custom objects)
+    return value;
   }
 }

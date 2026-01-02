@@ -47,16 +47,22 @@ class KodiScript {
   final Map<String, Object?> _variables;
   final Map<String, NativeFunc> _customFunctions;
   final bool _useCache;
+  final int _maxOps;
+  final Duration _timeout;
 
   KodiScript._({
     required String source,
     Map<String, Object?>? variables,
     Map<String, NativeFunc>? customFunctions,
     bool useCache = true,
+    int maxOps = 0,
+    Duration timeout = Duration.zero,
   })  : _source = source,
         _variables = variables ?? {},
         _customFunctions = customFunctions ?? {},
-        _useCache = useCache;
+        _useCache = useCache,
+        _maxOps = maxOps,
+        _timeout = timeout;
 
   /// Builder for KodiScript execution.
   static KodiScriptBuilder builder(String source) => KodiScriptBuilder(source);
@@ -113,6 +119,17 @@ class KodiScript {
     _variables.forEach((k, v) => env.set(k, v));
     final interpreter = Interpreter(env: env, natives: natives);
 
+    // Apply operation limit if set
+    if (_maxOps > 0) {
+      interpreter.setMaxOperations(_maxOps);
+    }
+
+    // Apply timeout if set
+    if (_timeout > Duration.zero) {
+      interpreter.setDeadline(
+          DateTime.now().millisecondsSinceEpoch + _timeout.inMilliseconds);
+    }
+
     try {
       final value = interpreter.eval(program);
       return ScriptResult(value: value, output: interpreter.getOutput());
@@ -128,6 +145,8 @@ class KodiScriptBuilder {
   final Map<String, Object?> _variables = {};
   final Map<String, NativeFunc> _customFunctions = {};
   bool _useCache = true;
+  int _maxOps = 0; // 0 = unlimited
+  Duration _timeout = Duration.zero; // zero = no timeout
 
   KodiScriptBuilder(this._source);
 
@@ -149,9 +168,29 @@ class KodiScriptBuilder {
     return this;
   }
 
+  /// Bind a Dart object to the script context with reflective access.
+  /// All public methods and fields of the object will be accessible from KodiScript.
+  KodiScriptBuilder bind(String name, Object obj) {
+    _variables[name] = obj;
+    return this;
+  }
+
   /// Enable or disable AST caching.
   KodiScriptBuilder withCache(bool enabled) {
     _useCache = enabled;
+    return this;
+  }
+
+  /// Set the maximum number of operations allowed.
+  /// Use this to protect against infinite loops.
+  KodiScriptBuilder withMaxOperations(int maxOps) {
+    _maxOps = maxOps;
+    return this;
+  }
+
+  /// Set the execution timeout.
+  KodiScriptBuilder withTimeout(Duration timeout) {
+    _timeout = timeout;
     return this;
   }
 
@@ -162,6 +201,8 @@ class KodiScriptBuilder {
       variables: _variables,
       customFunctions: _customFunctions,
       useCache: _useCache,
+      maxOps: _maxOps,
+      timeout: _timeout,
     )._execute();
   }
 }

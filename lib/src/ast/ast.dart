@@ -108,6 +108,18 @@ class ForStatement extends Statement {
   String tokenLiteral() => token.literal;
 }
 
+/// While statement: while (condition) { body }
+class WhileStatement extends Statement {
+  final Token token;
+  final Expression condition;
+  final BlockStatement body;
+
+  WhileStatement(this.token, this.condition, this.body);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
 /// Variable identifier.
 class Identifier extends Expression {
   final Token token;

@@ -155,6 +155,8 @@ class Parser {
         return _parseReturnStatement();
       case TokenType.forKeyword:
         return _parseForStatement();
+      case TokenType.whileKeyword:
+        return _parseWhileStatement();
       case TokenType.ident:
         if (_peekTokenIs(TokenType.assign)) {
           return _parseAssignment();
@@ -270,6 +272,23 @@ class Parser {
     final body = _parseBlockStatement();
 
     return ForStatement(token, variable, iterable, body);
+  }
+
+  WhileStatement? _parseWhileStatement() {
+    final token = _curToken;
+
+    if (!_expectPeek(TokenType.lparen)) return null;
+
+    _nextToken();
+    final condition = _parseExpression(_lowest);
+    if (condition == null) return null;
+
+    if (!_expectPeek(TokenType.rparen)) return null;
+    if (!_expectPeek(TokenType.lbrace)) return null;
+
+    final body = _parseBlockStatement();
+
+    return WhileStatement(token, condition, body);
   }
 
   ExpressionStatement? _parseExpressionStatement() {

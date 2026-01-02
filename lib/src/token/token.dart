@@ -61,7 +61,8 @@ enum TokenType {
   returnKeyword,
   forKeyword,
   inKeyword,
-  fn;
+  fn,
+  whileKeyword;
 
   /// Returns true if this token type can end a statement (for ASI).
   bool get canEndStatement => {
@@ -119,6 +120,7 @@ class Token {
     'for': TokenType.forKeyword,
     'in': TokenType.inKeyword,
     'fn': TokenType.fn,
+    'while': TokenType.whileKeyword,
   };
 
   /// Looks up an identifier to check if it's a keyword.

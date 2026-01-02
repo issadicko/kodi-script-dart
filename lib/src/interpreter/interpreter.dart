@@ -154,6 +154,8 @@ class Interpreter {
         return ReturnValue(value);
       case ForStatement():
         return _evalForStatement(stmt);
+      case WhileStatement():
+        return _evalWhileStatement(stmt);
     }
   }
 
@@ -185,6 +187,34 @@ class Interpreter {
       _checkDeadline();
 
       _env.set(varName, item);
+      final value = _evalBlockStatement(stmt.body);
+      if (value is ReturnValue) {
+        return value;
+      }
+      result = value;
+    }
+
+    return result;
+  }
+
+  Object? _evalWhileStatement(WhileStatement stmt) {
+    Object? result;
+
+    while (true) {
+      // Check operation limit at each iteration
+      _checkOperationLimit();
+      // Check deadline at each iteration
+      _checkDeadline();
+
+      // Evaluate condition
+      final conditionValue = _evalExpression(stmt.condition);
+
+      // Exit if condition is false
+      if (!_isTruthy(conditionValue)) {
+        break;
+      }
+
+      // Execute body
       final value = _evalBlockStatement(stmt.body);
       if (value is ReturnValue) {
         return value;

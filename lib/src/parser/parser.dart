@@ -363,9 +363,11 @@ class Parser {
         // Find matching }
         var braceCount = 1;
         final exprStart = i;
+        final openBrace = '{'.codeUnitAt(0);
+        final closeBrace = '}'.codeUnitAt(0);
         while (i < literal.length && braceCount > 0) {
-          if (literal[i] == '{') braceCount++;
-          else if (literal[i] == '}') braceCount--;
+          if (literal.codeUnitAt(i) == openBrace) braceCount++;
+          else if (literal.codeUnitAt(i) == closeBrace) braceCount--;
           if (braceCount > 0) i++;
         }
 

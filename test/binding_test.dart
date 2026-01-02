@@ -1,15 +1,33 @@
 import 'package:kodi_script/kodi_script.dart';
 import 'package:test/test.dart';
 
-// Test classes for reflective binding
-class Address {
+// Test classes for KodiBindable binding
+
+class Address implements KodiBindable {
   final String city;
   final String country;
 
   Address(this.city, this.country);
+
+  @override
+  Object? getProperty(String name) {
+    switch (name) {
+      case 'city':
+        return city;
+      case 'country':
+        return country;
+      default:
+        return null;
+    }
+  }
+
+  @override
+  Object? callMethod(String name, List<Object?> args) {
+    return null; // No methods
+  }
 }
 
-class User {
+class User implements KodiBindable {
   final String name;
   final int age;
   final Address address;
@@ -23,9 +41,39 @@ class User {
   String greet(String greeting) => "$greeting, $name!";
 
   Address getAddress() => address;
+
+  @override
+  Object? getProperty(String propName) {
+    switch (propName) {
+      case 'name':
+        return name;
+      case 'age':
+        return age;
+      case 'address':
+        return address;
+      default:
+        return null;
+    }
+  }
+
+  @override
+  Object? callMethod(String methodName, List<Object?> args) {
+    switch (methodName) {
+      case 'sayHello':
+        return sayHello();
+      case 'getAge':
+        return getAge();
+      case 'greet':
+        return greet(args[0] as String);
+      case 'getAddress':
+        return getAddress();
+      default:
+        return null;
+    }
+  }
 }
 
-class Calculator {
+class Calculator implements KodiBindable {
   double add(double a, double b) => a + b;
 
   int multiply(int x, int y) => x * y;
@@ -34,10 +82,33 @@ class Calculator {
     if (b == 0) return 0;
     return a / b;
   }
+
+  @override
+  Object? getProperty(String name) => null;
+
+  @override
+  Object? callMethod(String methodName, List<Object?> args) {
+    switch (methodName) {
+      case 'add':
+        final a = (args[0] as num).toDouble();
+        final b = (args[1] as num).toDouble();
+        return add(a, b);
+      case 'multiply':
+        final x = (args[0] as num).toInt();
+        final y = (args[1] as num).toInt();
+        return multiply(x, y);
+      case 'divide':
+        final a = (args[0] as num).toDouble();
+        final b = (args[1] as num).toDouble();
+        return divide(a, b);
+      default:
+        return null;
+    }
+  }
 }
 
 void main() {
-  group('Reflective Binding Tests', () {
+  group('KodiBindable Tests', () {
     test('bind field access', () {
       final user = User('Alice', 30, Address('Paris', 'France'));
 
@@ -137,10 +208,10 @@ void main() {
       expect(result.value, "Hello, I'm Henry I am 29.0 years old and I live in Vienna");
     });
 
-    test('bind non-existent property throws error', () {
+    test('bind non-existent method throws error', () {
       final user = User('Ivan', 31, Address('Prague', 'Czech Republic'));
 
-      final result = KodiScript.builder('user.nonExistent').bind('user', user).execute();
+      final result = KodiScript.builder('user.nonExistent()').bind('user', user).execute();
 
       expect(result.hasErrors, true);
       expect(result.errors.first, contains('nonExistent'));

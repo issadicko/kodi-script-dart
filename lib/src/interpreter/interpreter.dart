@@ -2,10 +2,43 @@
 library;
 
 import 'dart:developer';
-import 'dart:mirrors';
 
 import '../ast/ast.dart';
 import '../natives/natives.dart';
+
+/// Interface for objects that can be bound to KodiScript.
+///
+/// Implement this interface on Dart classes you want to expose to
+/// KodiScript via the `.bind()` API.
+///
+/// Example:
+/// ```dart
+/// class User implements KodiBindable {
+///   final String name;
+///   User(this.name);
+///
+///   @override
+///   Object? getProperty(String name) {
+///     if (name == 'name') return this.name;
+///     return null;
+///   }
+///
+///   @override
+///   Object? callMethod(String name, List<Object?> args) {
+///     if (name == 'sayHello') return "Hello, I'm ${this.name}";
+///     return null;
+///   }
+/// }
+/// ```
+abstract class KodiBindable {
+  /// Get a property value by name.
+  /// Returns null if the property doesn't exist.
+  Object? getProperty(String name);
+
+  /// Call a method by name with arguments.
+  /// Returns null if the method doesn't exist.
+  Object? callMethod(String name, List<Object?> args);
+}
 
 /// Environment holds variable bindings.
 class Environment {
@@ -553,68 +586,31 @@ class Interpreter {
     return 0.0;
   }
 
-  // ============ Reflection Support ============
+  // ============ Bindable Object Support ============
 
-  /// Uses mirrors to access properties on Dart objects.
+  /// Accesses properties on KodiBindable objects.
   Object? _reflectivePropertyAccess(Object obj, String propertyName) {
-    final instanceMirror = reflect(obj);
-
-    // Try to find a method (methods have priority over fields)
-    final classMirror = instanceMirror.type;
-    final methodSymbol = Symbol(propertyName);
-
-    if (classMirror.instanceMembers.containsKey(methodSymbol)) {
-      final member = classMirror.instanceMembers[methodSymbol]!;
-      if (!member.isGetter) {
-        // Return a callable wrapper
-        return NativeFunctionValue((args) {
-          return _callReflectedMethod(instanceMirror, methodSymbol, args);
-        });
-      }
-    }
-
-    // Try to access a field or getter
-    try {
-      final result = instanceMirror.getField(methodSymbol);
-      return _convertFromDartType(result.reflectee);
-    } catch (e) {
+    if (obj is! KodiBindable) {
       throw Exception(
-          "property or method '$propertyName' not found on ${obj.runtimeType}");
+          "cannot access property '$propertyName' on ${obj.runtimeType}: "
+          "object must implement KodiBindable");
     }
-  }
 
-  /// Calls a Dart method via reflection.
-  Object? _callReflectedMethod(
-      InstanceMirror instance, Symbol methodName, List<Object?> args) {
-    try {
-      // Get method mirror to inspect parameter types
-      final classMirror = instance.type;
-      final methodMirror = classMirror.instanceMembers[methodName];
-      if (methodMirror != null) {
-        // Convert arguments based on parameter types
-        final convertedArgs = <Object?>[];
-        for (var i = 0; i < args.length && i < methodMirror.parameters.length; i++) {
-          final param = methodMirror.parameters[i];
-          final arg = args[i];
+    // First try to get as a property
+    final propValue = obj.getProperty(propertyName);
+    if (propValue != null) {
+      return _convertFromDartType(propValue);
+    }
 
-          // Check if parameter expects int but we have double
-          if (param.type.reflectedType == int && arg is double) {
-            convertedArgs.add(arg.toInt());
-          } else {
-            convertedArgs.add(arg);
-          }
-        }
-
-        final result = instance.invoke(methodName, convertedArgs);
-        return _convertFromDartType(result.reflectee);
+    // Otherwise return a callable wrapper for method invocation
+    return NativeFunctionValue((args) {
+      final result = obj.callMethod(propertyName, args);
+      if (result == null) {
+        throw Exception(
+            "method or property '$propertyName' not found on ${obj.runtimeType}");
       }
-
-      // Fallback: invoke with original args
-      final result = instance.invoke(methodName, args);
-      return _convertFromDartType(result.reflectee);
-    } catch (e) {
-      throw Exception("error calling method: $e");
-    }
+      return _convertFromDartType(result);
+    });
   }
 
   /// Converts a Dart value to a KodiScript-compatible value.

@@ -168,9 +168,33 @@ class KodiScriptBuilder {
     return this;
   }
 
-  /// Bind a Dart object to the script context with reflective access.
-  /// All public methods and fields of the object will be accessible from KodiScript.
-  KodiScriptBuilder bind(String name, Object obj) {
+  /// Bind a Dart object to the script context.
+  ///
+  /// The object must implement [KodiBindable] to expose properties and methods
+  /// to KodiScript. This allows the script to access the object's properties
+  /// and call its methods.
+  ///
+  /// Example:
+  /// ```dart
+  /// class User implements KodiBindable {
+  ///   final String name;
+  ///   User(this.name);
+  ///
+  ///   @override
+  ///   Object? getProperty(String name) => name == 'name' ? this.name : null;
+  ///
+  ///   @override
+  ///   Object? callMethod(String name, List<Object?> args) {
+  ///     if (name == 'greet') return 'Hello, ${this.name}!';
+  ///     return null;
+  ///   }
+  /// }
+  ///
+  /// final result = KodiScript.builder('user.greet()')
+  ///     .bind('user', User('Alice'))
+  ///     .execute();
+  /// ```
+  KodiScriptBuilder bind(String name, KodiBindable obj) {
     _variables[name] = obj;
     return this;
   }

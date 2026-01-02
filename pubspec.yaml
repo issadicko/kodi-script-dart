@@ -1,6 +1,6 @@
 name: kodi_script
 description: A lightweight, embeddable scripting language for Dart applications.
-version: 0.1.0
+version: 0.1.1
 homepage: https://github.com/issadicko/kodi-script-dart
 repository: https://github.com/issadicko/kodi-script-dart
 issue_tracker: https://github.com/issadicko/kodi-script-dart/issues

@@ -36,20 +36,52 @@ void main() {
       test(testName, () {
         final source = sourceFile.readAsStringSync();
         final outPath = sourceFile.path.replaceAll('.kodi', '.out');
-        final expectedOut = File(outPath)
-            .readAsStringSync()
-            .replaceAll('\r\n', '\n')
-            .trim();
+        final outFile = File(outPath);
+        final expectedOut = outFile.existsSync() 
+            ? outFile.readAsStringSync().replaceAll('\r\n', '\n').trim() 
+            : '';
         
-        final result = KodiScript.run(source);
+        // Parse directives
+        int maxOps = 0;
+        bool expectError = false;
         
-        if (result.hasErrors) {
-          fail('Execution failed: ${result.errors.join(", ")}');
+        final lines = source.split('\n');
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.startsWith('// config:')) {
+            final parts = trimmed.substring('// config:'.length).split('=');
+            if (parts.length >= 2) {
+              final key = parts[0].trim();
+              final value = parts[1].trim();
+              if (key == 'maxOps') {
+                maxOps = int.tryParse(value) ?? 0;
+              }
+            }
+          }
+          if (trimmed.startsWith('// expect: error')) {
+            expectError = true;
+          }
         }
         
-        final actualOut = result.output.join('\n').replaceAll('\r\n', '\n').trim();
+        var builder = KodiScript.builder(source);
+        if (maxOps > 0) {
+          builder.withMaxOperations(maxOps);
+        }
         
-        // Normalize output for cross-implementation compatibility
+        final result = builder.execute();
+        
+        if (expectError) {
+          if (!result.hasErrors) {
+            fail('Expected execution error but got none');
+          }
+        } else {
+          if (result.hasErrors) {
+            fail('Execution failed: ${result.errors.join(", ")}');
+          }
+          
+          final actualOut = result.output.join('\n').replaceAll('\r\n', '\n').trim();
+          
+          // Normalize output for cross-implementation compatibility
         String normalize(String s) {
           return s
             .replaceAllMapped(RegExp(r'(\d+)\.0(?=[\s,\]\}\)\n]|$)'), (m) => m.group(1)!)
@@ -58,6 +90,7 @@ void main() {
         }
         
         expect(normalize(actualOut), equals(normalize(expectedOut)));
+        }
       });
     }
   });

@@ -535,7 +535,7 @@ class Interpreter {
 
     if (classMirror.instanceMembers.containsKey(methodSymbol)) {
       final member = classMirror.instanceMembers[methodSymbol]!;
-      if (member is MethodMirror && !member.isGetter) {
+      if (!member.isGetter) {
         // Return a callable wrapper
         return NativeFunctionValue((args) {
           return _callReflectedMethod(instanceMirror, methodSymbol, args);
@@ -560,8 +560,7 @@ class Interpreter {
       // Get method mirror to inspect parameter types
       final classMirror = instance.type;
       final methodMirror = classMirror.instanceMembers[methodName];
-
-      if (methodMirror != null && methodMirror is MethodMirror) {
+      if (methodMirror != null) {
         // Convert arguments based on parameter types
         final convertedArgs = <Object?>[];
         for (var i = 0; i < args.length && i < methodMirror.parameters.length; i++) {

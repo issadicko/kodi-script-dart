@@ -13,7 +13,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  kodi_script: ^0.0.1
+  kodi_script: ^0.2.0
 ```
 
 ## Quick Start

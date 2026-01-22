@@ -6,6 +6,15 @@ import 'dart:developer';
 import '../ast/ast.dart';
 import '../natives/natives.dart';
 
+/// Sentinel object to indicate that a method was not found.
+/// Used to distinguish between a method that returns null and a missing method.
+class _MethodNotFound {
+  const _MethodNotFound();
+}
+
+/// Sentinel value indicating a method was not found on a KodiBindable object.
+const methodNotFound = _MethodNotFound();
+
 /// Interface for objects that can be bound to KodiScript.
 ///
 /// Implement this interface on Dart classes you want to expose to
@@ -36,7 +45,8 @@ abstract class KodiBindable {
   Object? getProperty(String name);
 
   /// Call a method by name with arguments.
-  /// Returns null if the method doesn't exist.
+  /// Returns [methodNotFound] if the method doesn't exist.
+  /// Can return null if the method exists and returns null.
   Object? callMethod(String name, List<Object?> args);
 }
 
@@ -59,11 +69,47 @@ class Environment {
     _store[name] = value;
   }
 
+  /// Updates a variable in the scope where it was originally defined.
+  ///
+  /// Searches up the scope chain to find where the variable exists,
+  /// then updates it there. If not found, sets it in the current scope.
+  bool update(String name, Object? value) {
+    if (_store.containsKey(name)) {
+      _store[name] = value;
+      return true;
+    }
+    if (_outer != null) {
+      return _outer!.update(name, value);
+    }
+    // Variable not found in any scope, set in current scope
+    _store[name] = value;
+    return false;
+  }
+
   void addOutput(String line) {
     _output.add(line);
   }
 
   List<String> getOutput() => List.unmodifiable(_output);
+
+  /// Clears the output buffer.
+  void clearOutput() {
+    _output.clear();
+  }
+
+  /// Exports all variables from all scopes to a Map.
+  ///
+  /// Variables in inner scopes shadow those in outer scopes.
+  Map<String, Object?> toMap() {
+    final result = <String, Object?>{};
+    // First add outer scope variables (if any)
+    if (_outer != null) {
+      result.addAll(_outer!.toMap());
+    }
+    // Then add current scope (shadows outer)
+    result.addAll(_store);
+    return result;
+  }
 }
 
 /// Wrapper to signal early return from evaluation.
@@ -159,7 +205,24 @@ class Interpreter {
     return result;
   }
 
+  /// Returns the current environment.
+  ///
+  /// Used by KSEngine to access the script context.
+  Environment get environment => _env;
+
+  /// Calls a user-defined function with the given arguments.
+  ///
+  /// This is a public wrapper around [_applyFunction] for use by KSEngine.
+  Object? callFunction(FunctionValue fn, List<Object?> args) {
+    return _applyFunction(fn, args);
+  }
+
   List<String> getOutput() => _env.getOutput();
+
+  /// Clears the output buffer.
+  void clearOutput() {
+    _env.clearOutput();
+  }
 
   Object? _evalStatement(Statement stmt) {
     // Check operation limit at each statement
@@ -174,7 +237,8 @@ class Interpreter {
         return value;
       case Assignment():
         final value = _evalExpression(stmt.value);
-        _env.set(stmt.name.value, value);
+        // Use update to modify variable in its original scope
+        _env.update(stmt.name.value, value);
         return value;
       case ExpressionStatement():
         return _evalExpression(stmt.expression);
@@ -605,7 +669,7 @@ class Interpreter {
     // Otherwise return a callable wrapper for method invocation
     return NativeFunctionValue((args) {
       final result = obj.callMethod(propertyName, args);
-      if (result == null) {
+      if (result is _MethodNotFound) {
         throw Exception(
             "method or property '$propertyName' not found on ${obj.runtimeType}");
       }

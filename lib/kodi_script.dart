@@ -20,6 +20,12 @@ export 'src/parser/parser.dart';
 export 'src/interpreter/interpreter.dart';
 export 'src/natives/natives.dart';
 
+// Mini-App Engine exports
+export 'src/engine/ks_engine.dart';
+export 'src/engine/ks_engine_result.dart';
+export 'src/reactive/rx.dart';
+export 'src/reactive/rx_notifier.dart';
+
 import 'src/lexer/lexer.dart';
 import 'src/parser/parser.dart';
 import 'src/interpreter/interpreter.dart';

@@ -122,6 +122,21 @@ class Parser {
     }
   }
 
+  /// Skips newline tokens in peek position.
+  /// Used inside arrays and objects to allow multi-line definitions.
+  void _skipNewlines() {
+    while (_peekTokenIs(TokenType.newline)) {
+      _nextToken();
+    }
+  }
+
+  /// Skips newline tokens in current position.
+  void _skipCurrentNewlines() {
+    while (_curTokenIs(TokenType.newline)) {
+      _nextToken();
+    }
+  }
+
   Program parseProgram() {
     final program = Program();
 
@@ -423,21 +438,34 @@ class Parser {
   List<Expression> _parseExpressionList(TokenType end) {
     final list = <Expression>[];
 
+    // Skip leading newlines
+    _skipNewlines();
+
     if (_peekTokenIs(end)) {
       _nextToken();
       return list;
     }
 
     _nextToken();
+    _skipCurrentNewlines();
     final exp = _parseExpression(_lowest);
     if (exp != null) list.add(exp);
 
+    // Skip trailing newlines after each element
+    _skipNewlines();
+
     while (_peekTokenIs(TokenType.comma)) {
+      _nextToken(); // consume comma
+      _skipNewlines(); // skip newlines after comma
       _nextToken();
-      _nextToken();
+      _skipCurrentNewlines();
       final exp = _parseExpression(_lowest);
       if (exp != null) list.add(exp);
+      _skipNewlines();
     }
+
+    // Skip newlines before closing bracket
+    _skipNewlines();
 
     if (!_expectPeek(end)) {
       return [];
@@ -450,13 +478,19 @@ class Parser {
     final token = _curToken;
     final pairs = <String, Expression>{};
 
+    // Skip leading newlines
+    _skipNewlines();
+
     if (_peekTokenIs(TokenType.rbrace)) {
       _nextToken();
       return ObjectLiteral(token, pairs);
     }
 
     while (!_peekTokenIs(TokenType.rbrace)) {
+      _skipNewlines();
       _nextToken();
+      _skipCurrentNewlines();
+
       String key;
       if (_curTokenIs(TokenType.string) || _curTokenIs(TokenType.ident)) {
         key = _curToken.literal;
@@ -465,18 +499,32 @@ class Parser {
         return null;
       }
 
+      _skipNewlines();
       if (!_expectPeek(TokenType.colon)) return null;
 
+      _skipNewlines();
       _nextToken();
+      _skipCurrentNewlines();
       final value = _parseExpression(_lowest);
       if (value == null) return null;
       pairs[key] = value;
 
-      if (!_peekTokenIs(TokenType.rbrace) && !_expectPeek(TokenType.comma)) {
-        return null;
+      _skipNewlines();
+      if (!_peekTokenIs(TokenType.rbrace) && !_peekTokenIs(TokenType.comma)) {
+        // Allow newline as implicit separator
+        if (_peekTokenIs(TokenType.newline)) {
+          _skipNewlines();
+        } else if (!_peekTokenIs(TokenType.rbrace)) {
+          _addError('expected , or } in object literal');
+          return null;
+        }
+      } else if (_peekTokenIs(TokenType.comma)) {
+        _nextToken(); // consume comma
+        _skipNewlines();
       }
     }
 
+    _skipNewlines();
     if (!_expectPeek(TokenType.rbrace)) return null;
 
     return ObjectLiteral(token, pairs);

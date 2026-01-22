@@ -23,7 +23,7 @@ class Address implements KodiBindable {
 
   @override
   Object? callMethod(String name, List<Object?> args) {
-    return null; // No methods
+    return methodNotFound; // No methods on Address
   }
 }
 
@@ -68,7 +68,7 @@ class User implements KodiBindable {
       case 'getAddress':
         return getAddress();
       default:
-        return null;
+        return methodNotFound;
     }
   }
 }
@@ -102,7 +102,7 @@ class Calculator implements KodiBindable {
         final b = (args[1] as num).toDouble();
         return divide(a, b);
       default:
-        return null;
+        return methodNotFound;
     }
   }
 }

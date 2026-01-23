@@ -253,6 +253,10 @@ class Interpreter {
         return _evalForStatement(stmt);
       case WhileStatement():
         return _evalWhileStatement(stmt);
+      case FunctionDeclaration():
+        final fn = FunctionValue(stmt.parameters, stmt.body, _env);
+        _env.set(stmt.name.value, fn);
+        return null; // Function declaration statement returns null
     }
   }
 
@@ -389,6 +393,51 @@ class Interpreter {
     }
   }
 
+  Object? _evalAssignment(Expression left, Expression rightExpr) {
+    final right = _evalExpression(rightExpr);
+
+    switch (left) {
+      case Identifier():
+        _env.update(left.value, right);
+        return right;
+
+      case IndexExpr():
+        final target = _evalExpression(left.left);
+        final index = _evalExpression(left.index);
+
+        if (target is List) {
+          final idx = _toNumber(index).toInt();
+          // Auto-expand list if assigning directly to length
+          if (idx == target.length) {
+            target.add(right);
+            return right;
+          }
+          if (idx < 0 || idx > target.length) {
+             throw RangeError('Index out of range: $idx (length: ${target.length})');
+          }
+          target[idx] = right;
+          return right;
+        } else if (target is Map) {
+          target[index.toString()] = right;
+          return right;
+        }
+        throw Exception("Cannot assign to index of ${target.runtimeType}");
+
+      case PropertyAccessExpr():
+        final target = _evalExpression(left.obj);
+        final property = left.property.value;
+
+        if (target is Map) {
+          target[property] = right;
+          return right;
+        }
+        throw Exception("Cannot assign property '$property' on ${target.runtimeType}");
+
+      default:
+        throw Exception("Invalid assignment target: ${left.runtimeType}");
+    }
+  }
+
   Object? _evalIndexExpression(IndexExpr expr) {
     final left = _evalExpression(expr.left);
     final index = _evalExpression(expr.index);
@@ -408,6 +457,10 @@ class Interpreter {
   }
 
   Object? _evalBinaryExpr(BinaryExpr expr) {
+    if (expr.operator == '=') {
+      return _evalAssignment(expr.left, expr.right);
+    }
+
     final left = _evalExpression(expr.left);
 
     // Short-circuit for && and ||
@@ -494,13 +547,48 @@ class Interpreter {
       throw Exception("cannot access property '${expr.property.value}' on null");
     }
 
+    final prop = expr.property.value;
+
     // First check for map access (existing behavior)
     if (obj is Map) {
-      return obj[expr.property.value];
+      return obj[prop];
+    }
+    
+    // Check for List access
+    if (obj is List) {
+      if (prop == 'size') {
+        return NativeFunctionValue((args) => obj.length.toDouble());
+      }
+      if (prop == 'length') {
+        return obj.length.toDouble();
+      }
+      if (prop == 'add') {
+        return NativeFunctionValue((args) {
+           obj.add(args[0]);
+           return null;
+        });
+      }
+      if (prop == 'isEmpty') {
+        return obj.isEmpty;
+      }
+      if (prop == 'isNotEmpty') {
+        return obj.isNotEmpty;
+      }
+      if (prop == 'contains') {
+        return NativeFunctionValue((args) {
+           return obj.contains(args[0]);
+        });
+      }
+      if (prop == 'clear') {
+         return NativeFunctionValue((args) {
+            obj.clear();
+            return null;
+         });
+      }
     }
 
     // Use reflection to access methods and fields on Dart objects
-    return _reflectivePropertyAccess(obj, expr.property.value);
+    return _reflectivePropertyAccess(obj, prop);
   }
 
   Object? _evalCallExpr(CallExpr expr) {
@@ -614,8 +702,9 @@ class Interpreter {
   Object? _applyFunction(Object? fn, List<Object?> args) {
     if (fn is FunctionValue) {
       final extendedEnv = Environment(fn.env);
-      for (var i = 0; i < fn.parameters.length && i < args.length; i++) {
-        extendedEnv.set(fn.parameters[i].value, args[i]);
+      for (var i = 0; i < fn.parameters.length; i++) {
+        final val = (i < args.length) ? args[i] : null;
+        extendedEnv.set(fn.parameters[i].value, val);
       }
 
       final previousEnv = _env;

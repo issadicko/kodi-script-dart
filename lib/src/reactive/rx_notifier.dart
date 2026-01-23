@@ -8,39 +8,45 @@ class RxNotifier {
 
   RxNotifier._();
 
-  /// Set of Rx instances being captured during the current build.
-  Set<Object>? _currentCapturer;
+  /// Stack of capturers for nested Obx support.
+  final List<Set<Object>> _captureStack = [];
 
   /// Starts capturing reactive dependencies.
   ///
   /// Call this before executing a builder function to track
-  /// which Rx variables are accessed.
+  /// which Rx variables are accessed. Supports nesting.
   void startCapture() {
-    _currentCapturer = <Object>{};
+    _captureStack.add(<Object>{});
   }
 
   /// Stops capturing and returns all captured dependencies.
   ///
   /// Returns the set of [Rx] instances that were accessed
-  /// since [startCapture] was called.
+  /// since [startCapture] was called. Pops from the stack.
   Set<Object> stopCapture() {
-    final captured = _currentCapturer ?? <Object>{};
-    _currentCapturer = null;
-    return captured;
+    if (_captureStack.isEmpty) {
+      return <Object>{};
+    }
+    return _captureStack.removeLast();
   }
 
   /// Registers an Rx as a dependency if capture is active.
   ///
-  /// Called internally by [Rx.value] getter.
+  /// Called internally by [Rx.value] getter. Adds to the CURRENT capturer only.
   void captureDependency(Object rx) {
-    _currentCapturer?.add(rx);
+    if (_captureStack.isNotEmpty) {
+      _captureStack.last.add(rx);
+    }
   }
 
   /// Whether dependency capture is currently active.
-  bool get isCapturing => _currentCapturer != null;
+  bool get isCapturing => _captureStack.isNotEmpty;
 
   /// Clears the current capture without returning dependencies.
   void cancelCapture() {
-    _currentCapturer = null;
+    if (_captureStack.isNotEmpty) {
+      _captureStack.removeLast();
+    }
   }
 }
+

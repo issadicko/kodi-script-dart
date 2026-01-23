@@ -7,18 +7,20 @@ import '../ast/ast.dart';
 
 /// Operator precedence levels.
 const int _lowest = 1;
-const int _elvis = 2;
-const int _or = 3;
-const int _and = 4;
-const int _equals = 5;
-const int _lessGreater = 6;
-const int _sum = 7;
-const int _product = 8;
-const int _prefix = 9;
-const int _call = 10;
-const int _access = 11;
+const int _assign = 2; // =
+const int _elvis = 3;
+const int _or = 4;
+const int _and = 5;
+const int _equals = 6;
+const int _lessGreater = 7;
+const int _sum = 8;
+const int _product = 9;
+const int _prefix = 10;
+const int _call = 11;
+const int _access = 12;
 
 final Map<TokenType, int> _precedences = {
+  TokenType.assign: _assign,
   TokenType.elvis: _elvis,
   TokenType.or: _or,
   TokenType.and: _and,
@@ -83,7 +85,9 @@ class Parser {
     _infixParseFns[TokenType.dot] = _parsePropertyAccess;
     _infixParseFns[TokenType.safeAccess] = _parseSafeAccess;
     _infixParseFns[TokenType.lparen] = _parseCallExpression;
+    _infixParseFns[TokenType.lparen] = _parseCallExpression;
     _infixParseFns[TokenType.lbracket] = _parseIndexExpression;
+    _infixParseFns[TokenType.assign] = _parseAssignmentExpression;
 
     // Initialize tokens
     _nextToken();
@@ -172,10 +176,16 @@ class Parser {
         return _parseForStatement();
       case TokenType.whileKeyword:
         return _parseWhileStatement();
-      case TokenType.ident:
-        if (_peekTokenIs(TokenType.assign)) {
-          return _parseAssignment();
+      case TokenType.fn:
+        // Check if it's a declaration (fn name) or closure (fn()
+        if (_peekTokenIs(TokenType.ident)) {
+          return _parseFunctionDeclaration();
         }
+        // Otherwise it's an expression (closure)
+        return _parseExpressionStatement();
+      case TokenType.function:
+        return _parseFunctionDeclaration();
+      case TokenType.ident:
         return _parseExpressionStatement();
       default:
         return _parseExpressionStatement();
@@ -304,6 +314,24 @@ class Parser {
     final body = _parseBlockStatement();
 
     return WhileStatement(token, condition, body);
+  }
+
+  FunctionDeclaration? _parseFunctionDeclaration() {
+    final token = _curToken;
+
+    if (!_expectPeek(TokenType.ident)) return null;
+    final name = Identifier(_curToken, _curToken.literal);
+
+    if (!_expectPeek(TokenType.lparen)) return null;
+
+    final parameters = _parseFunctionParameters();
+    if (parameters == null) return null;
+
+    if (!_expectPeek(TokenType.lbrace)) return null;
+
+    final body = _parseBlockStatement();
+
+    return FunctionDeclaration(token, name, parameters, body);
   }
 
   ExpressionStatement? _parseExpressionStatement() {
@@ -580,6 +608,16 @@ class Parser {
     return ElvisExpr(token, left, defaultValue);
   }
 
+  Expression? _parseAssignmentExpression(Expression left) {
+    final token = _curToken;
+    final precedence = _curPrecedence();
+    _nextToken();
+    // Right-associative: pass precedence check by not incrementing or using same
+    final right = _parseExpression(precedence); 
+    if (right == null) return null;
+    return BinaryExpr(token, left, "=", right);
+  }
+
   Expression? _parsePropertyAccess(Expression left) {
     final token = _curToken;
     if (!_expectPeek(TokenType.ident)) return null;
@@ -604,24 +642,33 @@ class Parser {
   List<Expression>? _parseCallArguments() {
     final args = <Expression>[];
 
+    _skipNewlines();
+
     if (_peekTokenIs(TokenType.rparen)) {
       _nextToken();
       return args;
     }
 
     _nextToken();
+    _skipCurrentNewlines();
     final exp = _parseExpression(_lowest);
     if (exp == null) return null;
     args.add(exp);
 
+    _skipNewlines();
+
     while (_peekTokenIs(TokenType.comma)) {
+      _nextToken(); // consume comma
+      _skipNewlines();
       _nextToken();
-      _nextToken();
+      _skipCurrentNewlines();
       final exp = _parseExpression(_lowest);
       if (exp == null) return null;
       args.add(exp);
+      _skipNewlines();
     }
 
+    _skipNewlines();
     if (!_expectPeek(TokenType.rparen)) return null;
 
     return args;

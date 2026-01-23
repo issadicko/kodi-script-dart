@@ -115,6 +115,26 @@ void main() {
         expect(result.success, isFalse);
         expect(result.errors.first, contains('not a function'));
       });
+      test('should allow function calls with missing arguments', () async {
+        await engine.load('''
+          let testFn = fn(a, b) {
+             let res = "a=" + a
+             if (b == null) {
+                res = res + ", b=null"
+             } else {
+                res = res + ", b=" + b
+             }
+             return res
+          }
+        ''');
+
+        final result = await engine.invoke('testFn', ['val']); // Pass 1 arg, expect b=null
+        
+        if (!result.success) {
+           fail('Invoke failed: ${result.errors}');
+        }
+        expect(result.value, equals('a=val, b=null'));
+      });
     });
 
     group('invokeSync()', () {

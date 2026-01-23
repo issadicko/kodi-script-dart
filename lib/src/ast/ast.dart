@@ -14,6 +14,19 @@ sealed class Statement extends Node {}
 /// Represents an expression node.
 sealed class Expression extends Node {}
 
+/// Function declaration: function name(params) { body }
+class FunctionDeclaration extends Statement {
+  final Token token;
+  final Identifier name;
+  final List<Identifier> parameters;
+  final BlockStatement body;
+
+  FunctionDeclaration(this.token, this.name, this.parameters, this.body);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
 /// Program is the root node of every AST.
 class Program extends Node {
   final List<Statement> statements;

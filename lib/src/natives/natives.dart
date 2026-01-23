@@ -102,6 +102,7 @@ class NativeFunctions {
     _functions['first'] = _nativeFirst;
     _functions['last'] = _nativeLast;
     _functions['slice'] = _nativeSlice;
+    _functions['setProperty'] = _nativeSetProperty;
 
     // Date/Time functions
     _functions['now'] = _nativeNow;
@@ -479,6 +480,26 @@ class NativeFunctions {
       return arr.sublist(start, end);
     }
     return arr.sublist(start);
+  }
+
+  Object? _nativeSetProperty(List<Object?> args) {
+    _requireArgs(args, 3, 'setProperty');
+    final target = args[0];
+    final key = args[1];
+    final value = args[2];
+
+    if (target is Map) {
+      target[key] = value;
+      return value;
+    } else if (target is List) {
+      final index = _toDouble(key).toInt();
+      if (index >= 0 && index < target.length) {
+        target[index] = value;
+        return value;
+      }
+      throw RangeError('Index out of range: $index');
+    }
+    throw ArgumentError('setProperty requires a map or array as target');
   }
 
   // ============ Helpers ============

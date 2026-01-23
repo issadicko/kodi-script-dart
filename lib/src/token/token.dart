@@ -62,6 +62,7 @@ enum TokenType {
   forKeyword,
   inKeyword,
   fn,
+  function,
   whileKeyword;
 
   /// Returns true if this token type can end a statement (for ASI).
@@ -120,6 +121,7 @@ class Token {
     'for': TokenType.forKeyword,
     'in': TokenType.inKeyword,
     'fn': TokenType.fn,
+    'function': TokenType.function,
     'while': TokenType.whileKeyword,
   };
 

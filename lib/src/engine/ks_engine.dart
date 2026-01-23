@@ -58,10 +58,21 @@ class KSEngine {
   /// Whether the engine has been loaded.
   bool _loaded = false;
 
+  /// The bindings to apply when loading a script.
+  final Map<String, KodiBindable> _bindings = {};
+
   /// Creates a new KSEngine instance.
   KSEngine() {
     _initNatives();
   }
+
+  // ... (existing code)
+
+
+
+  // ...
+
+
 
   /// Whether the engine is loaded and ready for invocation.
   bool get isLoaded => _loaded;
@@ -71,7 +82,12 @@ class KSEngine {
     _natives = NativeFunctions.withBuiltins();
     // Register Obs function for creating reactive variables
     _natives!.register('Obs', createObs);
+    
+    // Register Computed for derived values (registered later when interpreter is available)
+    // The actual Computed registration happens in load() after interpreter is created
   }
+
+
 
   /// Loads and initializes a script.
   ///
@@ -97,6 +113,46 @@ class KSEngine {
     // Create fresh environment and interpreter
     _env = Environment();
     _interpreter = Interpreter(env: _env!, natives: _natives!);
+    
+    // Register Computed - needs interpreter reference
+    _env!.set('Computed', NativeFunctionValue((args) {
+      if (args.isEmpty || args[0] is! FunctionValue) {
+        throw Exception('Computed requires a function argument');
+      }
+      final fn = args[0] as FunctionValue;
+      return Computed(() => _interpreter!.callFunction(fn, []));
+    }));
+    
+    // Register watch - observes an Rx and calls callback on change
+    _env!.set('watch', NativeFunctionValue((args) {
+      if (args.length < 2) {
+        throw Exception('watch requires 2 arguments: observable and callback');
+      }
+      final rx = args[0];
+      final callback = args[1];
+      
+      if (rx is! Rx) {
+        throw Exception('First argument to watch must be an Obs or Computed');
+      }
+      if (callback is! FunctionValue) {
+        throw Exception('Second argument to watch must be a function');
+      }
+      
+      Object? previousValue = rx.value;
+      
+      rx.addListener(() {
+        final newValue = rx.value;
+        _interpreter!.callFunction(callback, [newValue, previousValue]);
+        previousValue = newValue;
+      });
+      
+      return null;
+    }));
+    
+    // Apply bindings
+    _bindings.forEach((name, value) {
+      _env!.set(name, value);
+    });
 
     // Execute global scope to initialize state
     try {
@@ -185,6 +241,7 @@ class KSEngine {
   ///
   /// The object must implement [KodiBindable].
   void bind(String name, KodiBindable value) {
+    _bindings[name] = value;
     _env?.set(name, value);
   }
 

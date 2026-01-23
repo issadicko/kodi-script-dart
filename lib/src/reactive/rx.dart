@@ -1,6 +1,8 @@
 import '../interpreter/interpreter.dart';
 import 'rx_notifier.dart';
 
+export 'computed.dart';
+
 /// A reactive variable that notifies listeners when its value changes.
 ///
 /// Implements [KodiBindable] to be usable directly from KodiScript.
@@ -30,7 +32,7 @@ class Rx<T> implements KodiBindable {
 
   /// Sets a new value and notifies listeners if changed.
   set value(T newValue) {
-    if (_value != newValue) {
+    if (_value != newValue || newValue is List || newValue is Map) {
       _value = newValue;
       _notifyListeners();
     }

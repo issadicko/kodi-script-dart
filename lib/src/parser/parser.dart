@@ -207,19 +207,6 @@ class Parser {
     return VarDecl(token, name, value);
   }
 
-  Assignment? _parseAssignment() {
-    final token = _curToken;
-    final name = Identifier(_curToken, _curToken.literal);
-
-    _nextToken(); // consume ASSIGN
-    _nextToken(); // move to expression
-
-    final value = _parseExpression(_lowest);
-    if (value == null) return null;
-
-    return Assignment(token, name, value);
-  }
-
   IfStatement? _parseIfStatement() {
     final token = _curToken;
 

@@ -556,34 +556,95 @@ class Interpreter {
     
     // Check for List access
     if (obj is List) {
+      final listObj = obj;
+      
       if (prop == 'size') {
-        return NativeFunctionValue((args) => obj.length.toDouble());
+        return NativeFunctionValue((args) => listObj.length.toDouble());
       }
       if (prop == 'length') {
-        return obj.length.toDouble();
+        return listObj.length.toDouble();
       }
       if (prop == 'add') {
         return NativeFunctionValue((args) {
-           obj.add(args[0]);
+           listObj.add(args[0]);
            return null;
         });
       }
       if (prop == 'isEmpty') {
-        return obj.isEmpty;
+        return listObj.isEmpty;
       }
       if (prop == 'isNotEmpty') {
-        return obj.isNotEmpty;
+        return listObj.isNotEmpty;
       }
       if (prop == 'contains') {
         return NativeFunctionValue((args) {
-           return obj.contains(args[0]);
+           return listObj.contains(args[0]);
         });
       }
       if (prop == 'clear') {
          return NativeFunctionValue((args) {
-            obj.clear();
+            listObj.clear();
             return null;
          });
+      }
+      
+      // -- Higher Order Methods --
+      
+      if (prop == 'map') {
+        return NativeFunctionValue((args) {
+          if (args.isEmpty) return [];
+          final fn = args[0];
+          return listObj.asMap().entries.map((e) => 
+            _applyFunction(fn, [e.value, e.key.toDouble()])
+          ).toList();
+        });
+      }
+
+      if (prop == 'filter' || prop == 'where') {
+        return NativeFunctionValue((args) {
+          if (args.isEmpty) return [];
+          final fn = args[0];
+          final result = <Object?>[];
+          for (var i = 0; i < listObj.length; i++) {
+            if (_isTruthy(_applyFunction(fn, [listObj[i], i.toDouble()]))) {
+              result.add(listObj[i]);
+            }
+          }
+          return result;
+        });
+      }
+
+      if (prop == 'forEach') {
+        return NativeFunctionValue((args) {
+          if (args.isEmpty) return null;
+          final fn = args[0];
+          for (var i = 0; i < listObj.length; i++) {
+            _applyFunction(fn, [listObj[i], i.toDouble()]);
+          }
+          return null;
+        });
+      }
+
+      if (prop == 'any') {
+        return NativeFunctionValue((args) {
+          if (args.isEmpty) return false;
+          final fn = args[0];
+          for (var i = 0; i < listObj.length; i++) {
+            if (_isTruthy(_applyFunction(fn, [listObj[i], i.toDouble()]))) return true;
+          }
+          return false;
+        });
+      }
+
+      if (prop == 'every') {
+        return NativeFunctionValue((args) {
+          if (args.isEmpty) return true;
+          final fn = args[0];
+          for (var i = 0; i < listObj.length; i++) {
+            if (!_isTruthy(_applyFunction(fn, [listObj[i], i.toDouble()]))) return false;
+          }
+          return true;
+        });
       }
     }
 

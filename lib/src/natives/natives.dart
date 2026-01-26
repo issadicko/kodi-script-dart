@@ -4,6 +4,8 @@ library;
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
+import '../reactive/rx.dart';
+import '../reactive/rx_list.dart';
 
 /// Native function signature.
 typedef NativeFunc = Object? Function(List<Object?>);
@@ -31,6 +33,10 @@ class NativeFunctions {
   }
 
   void _registerBuiltins() {
+    // Reactive factories
+    _functions['Obs'] = createObs;
+    _functions['List'] = createRxList;
+
     // String functions
     _functions['toString'] = _nativeToString;
     _functions['toNumber'] = _nativeToNumber;

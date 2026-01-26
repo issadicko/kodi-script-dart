@@ -174,6 +174,31 @@ class KSEngine {
   ///
   /// Returns a [KSEngineResult] with the function's return value.
   Future<KSEngineResult> invoke(String funcName, [List<Object?> args = const []]) async {
+    return invokeSynchronized(funcName, args);
+  }
+
+  /// Invokes a function synchronously.
+  ///
+  /// Throws if the engine is not loaded or the function doesn't exist.
+  Object? invokeSync(String funcName, [List<Object?> args = const []]) {
+    if (!_loaded) {
+      throw StateError('Engine not loaded. Call load() first.');
+    }
+
+    final (funcValue, found) = _env!.get(funcName);
+
+    if (!found) {
+      throw ArgumentError('Function "$funcName" not found');
+    }
+
+    if (funcValue is! FunctionValue) {
+      throw ArgumentError('"$funcName" is not a function');
+    }
+
+    return _interpreter!.callFunction(funcValue, args);
+  }
+
+  KSEngineResult invokeSynchronized(String funcName, [List<Object?> args = const []]){
     if (!_loaded) {
       return KSEngineResult.error(['Engine not loaded. Call load() first.']);
     }
@@ -200,26 +225,6 @@ class KSEngine {
     }
   }
 
-  /// Invokes a function synchronously.
-  ///
-  /// Throws if the engine is not loaded or the function doesn't exist.
-  Object? invokeSync(String funcName, [List<Object?> args = const []]) {
-    if (!_loaded) {
-      throw StateError('Engine not loaded. Call load() first.');
-    }
-
-    final (funcValue, found) = _env!.get(funcName);
-
-    if (!found) {
-      throw ArgumentError('Function "$funcName" not found');
-    }
-
-    if (funcValue is! FunctionValue) {
-      throw ArgumentError('"$funcName" is not a function');
-    }
-
-    return _interpreter!.callFunction(funcValue, args);
-  }
 
   /// Gets a variable from the script context.
   ///

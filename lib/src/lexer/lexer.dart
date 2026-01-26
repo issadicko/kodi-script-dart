@@ -143,7 +143,9 @@ class Lexer {
       case '.':
         tok = Token(TokenType.dot, '.', line: _line, column: startColumn);
       case '"':
-        final result = _readString();
+      case "'":
+        final delimiter = _ch;
+        final result = _readString(delimiter);
         final type = result.isTemplate ? TokenType.stringTemplate : TokenType.string;
         tok = Token(type, result.value, line: _line, column: startColumn);
       default:
@@ -207,11 +209,11 @@ class Lexer {
     return _input.substring(start, _position);
   }
 
-  ({String value, bool isTemplate}) _readString() {
-    _readChar(); // skip opening "
+  ({String value, bool isTemplate}) _readString(String delimiter) {
+    _readChar(); // skip opening delimiter
     final buffer = StringBuffer();
     var isTemplate = false;
-    while (_ch != '"' && _ch != '') {
+    while (_ch != delimiter && _ch != '') {
       if (_ch == '\\') {
         _readChar();
         switch (_ch) {
@@ -223,6 +225,8 @@ class Lexer {
             buffer.write('\r');
           case '"':
             buffer.write('"');
+          case "'":
+            buffer.write("'");
           case '\\':
             buffer.write('\\');
           case '\$':

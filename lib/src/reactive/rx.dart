@@ -34,7 +34,7 @@ class Rx<T> implements KodiBindable {
   set value(T newValue) {
     if (_value != newValue || newValue is List || newValue is Map) {
       _value = newValue;
-      _notifyListeners();
+      notifyListeners();
     }
   }
 
@@ -58,7 +58,8 @@ class Rx<T> implements KodiBindable {
   /// Returns the number of active listeners.
   int get listenerCount => _listeners.length;
 
-  void _notifyListeners() {
+  /// Manually notify listeners of a change.
+  void notifyListeners() {
     // Create a copy to avoid concurrent modification
     final listenersCopy = List<void Function()>.from(_listeners);
     for (final listener in listenersCopy) {

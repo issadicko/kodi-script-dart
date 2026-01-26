@@ -67,7 +67,7 @@ class Computed implements Rx<Object?>, KodiBindable {
   void _onDependencyChanged() {
     if (!_isDirty) {
       _isDirty = true;
-      _notifyListeners();
+      notifyListeners();
     }
   }
 
@@ -81,7 +81,8 @@ class Computed implements Rx<Object?>, KodiBindable {
     _listeners.remove(listener);
   }
 
-  void _notifyListeners() {
+  @override
+  void notifyListeners() {
     for (final listener in List.from(_listeners)) {
       listener();
     }

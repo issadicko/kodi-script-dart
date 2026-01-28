@@ -50,6 +50,14 @@ abstract class KodiBindable {
   Object? callMethod(String name, List<Object?> args);
 }
 
+/// Interface for objects that support custom assignment logic.
+///
+/// If a variable holding a KodiAssignable object is assigned a new value,
+/// the interpreter calls [assign] instead of overwriting the variable.
+abstract class KodiAssignable {
+  void assign(Object? value);
+}
+
 /// Environment holds variable bindings.
 class Environment {
   final Environment? _outer;
@@ -75,7 +83,13 @@ class Environment {
   /// then updates it there. If not found, sets it in the current scope.
   bool update(String name, Object? value) {
     if (_store.containsKey(name)) {
-      _store[name] = value;
+      final existing = _store[name];
+      // Smart assignment: if the object is Assignable, let it handle the value
+      if (existing is KodiAssignable) {
+        existing.assign(value);
+      } else {
+        _store[name] = value;
+      }
       return true;
     }
     if (_outer != null) {

@@ -13,7 +13,7 @@ import '../interpreter/interpreter.dart';
 /// a.set(7)
 /// print(sum.value)  // 17 (automatically recalculated)
 /// ```
-class Computed implements Rx<Object?>, KodiBindable {
+class Computed implements Rx<Object?>, KodiBindable, KodiAssignable {
   final Object? Function() _computeFn;
   
   Object? _cachedValue;
@@ -100,6 +100,15 @@ class Computed implements Rx<Object?>, KodiBindable {
   set value(Object? newValue) {
     // Computed values are read-only
     throw UnsupportedError('Cannot set value on a Computed. Use Obs instead.');
+  }
+  
+  // ============ KodiAssignable Implementation ============
+
+  @override
+  void assign(Object? newValue) {
+    // Computed values are read-only. We throw to prevent
+    // accidental overwriting of the computed variable.
+    throw UnsupportedError('Cannot assign to a Computed variable.');
   }
 
   /// Disposes this Computed, removing all dependency listeners.

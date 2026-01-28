@@ -154,6 +154,11 @@ class KSEngine {
       _env!.set(name, value);
     });
 
+    // Apply variables
+    _variables.forEach((name, value) {
+      _env!.set(name, value);
+    });
+
     // Execute global scope to initialize state
     try {
       _interpreter!.eval(_program!);
@@ -235,10 +240,16 @@ class KSEngine {
     return found ? value : null;
   }
 
+  /// The variable values to apply when loading a script.
+  final Map<String, Object?> _variables = {};
+
+  /// ...
+
   /// Sets a variable in the script context.
   ///
   /// This can be used to inject values from the host application.
   void setVariable(String name, Object? value) {
+    _variables[name] = value;
     _env?.set(name, value);
   }
 

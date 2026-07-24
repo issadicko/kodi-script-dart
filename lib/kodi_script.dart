@@ -31,6 +31,9 @@ import 'src/parser/parser.dart';
 import 'src/interpreter/interpreter.dart';
 import 'src/natives/natives.dart';
 import 'src/cache/ast_cache.dart';
+import 'src/engine/ks_engine_result.dart' show ErrorKind;
+
+export 'src/engine/ks_engine_result.dart' show ErrorKind;
 
 /// Result of script execution.
 class ScriptResult {
@@ -38,10 +41,14 @@ class ScriptResult {
   final List<String> output;
   final List<String> errors;
 
+  /// Classifies the failure ([ErrorKind.none] on success).
+  final ErrorKind errorKind;
+
   const ScriptResult({
     this.value,
     this.output = const [],
     this.errors = const [],
+    this.errorKind = ErrorKind.none,
   });
 
   bool get hasErrors => errors.isNotEmpty;
@@ -55,6 +62,7 @@ class KodiScript {
   final bool _useCache;
   final int _maxOps;
   final Duration _timeout;
+  final void Function(String)? _outputSink;
 
   KodiScript._({
     required String source,
@@ -63,12 +71,14 @@ class KodiScript {
     bool useCache = true,
     int maxOps = 0,
     Duration timeout = Duration.zero,
+    void Function(String)? outputSink,
   })  : _source = source,
         _variables = variables ?? {},
         _customFunctions = customFunctions ?? {},
         _useCache = useCache,
         _maxOps = maxOps,
-        _timeout = timeout;
+        _timeout = timeout,
+        _outputSink = outputSink;
 
   /// Builder for KodiScript execution.
   static KodiScriptBuilder builder(String source) => KodiScriptBuilder(source);
@@ -102,7 +112,7 @@ class KodiScript {
       program = parser.parseProgram();
 
       if (parser.errors().isNotEmpty) {
-        return ScriptResult(errors: parser.errors());
+        return ScriptResult(errors: parser.errors(), errorKind: ErrorKind.parse);
       }
 
       // Store in cache
@@ -130,6 +140,12 @@ class KodiScript {
       interpreter.setMaxOperations(_maxOps);
     }
 
+    // Route print() to a custom sink if provided.
+    final sink = _outputSink;
+    if (sink != null) {
+      interpreter.setOutputSink(sink);
+    }
+
     // Apply timeout if set
     if (_timeout > Duration.zero) {
       interpreter.setDeadline(
@@ -140,8 +156,15 @@ class KodiScript {
       final value = interpreter.eval(program);
       return ScriptResult(value: value, output: interpreter.getOutput());
     } catch (e) {
-      return ScriptResult(errors: [e.toString()]);
+      return ScriptResult(errors: [e.toString()], errorKind: _classifyError(e));
     }
+  }
+
+  /// Classifies a runtime failure the way Go's classifyError does.
+  static ErrorKind _classifyError(Object e) {
+    if (e is TimeoutException) return ErrorKind.timeout;
+    if (e is MaxOperationsExceeded) return ErrorKind.maxOperations;
+    return ErrorKind.runtime;
   }
 }
 
@@ -153,6 +176,7 @@ class KodiScriptBuilder {
   bool _useCache = true;
   int _maxOps = 0; // 0 = unlimited
   Duration _timeout = Duration.zero; // zero = no timeout
+  void Function(String)? _outputSink;
 
   KodiScriptBuilder(this._source);
 
@@ -224,6 +248,13 @@ class KodiScriptBuilder {
     return this;
   }
 
+  /// Route each `print()` line to [sink] instead of the default logger.
+  /// Output is still captured in [ScriptResult.output].
+  KodiScriptBuilder withOutput(void Function(String) sink) {
+    _outputSink = sink;
+    return this;
+  }
+
   /// Execute the script.
   ScriptResult execute() {
     return KodiScript._(
@@ -233,6 +264,7 @@ class KodiScriptBuilder {
       useCache: _useCache,
       maxOps: _maxOps,
       timeout: _timeout,
+      outputSink: _outputSink,
     )._execute();
   }
 }

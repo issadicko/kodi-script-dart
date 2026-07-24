@@ -8,19 +8,21 @@ import '../ast/ast.dart';
 /// Operator precedence levels.
 const int _lowest = 1;
 const int _assign = 2; // =
-const int _elvis = 3;
-const int _or = 4;
-const int _and = 5;
-const int _equals = 6;
-const int _lessGreater = 7;
-const int _sum = 8;
-const int _product = 9;
-const int _prefix = 10;
-const int _call = 11;
-const int _access = 12;
+const int _ternary = 3; // ?:  (conditional)
+const int _elvis = 4;
+const int _or = 5;
+const int _and = 6;
+const int _equals = 7;
+const int _lessGreater = 8;
+const int _sum = 9;
+const int _product = 10;
+const int _prefix = 11;
+const int _call = 12;
+const int _access = 13;
 
 final Map<TokenType, int> _precedences = {
   TokenType.assign: _assign,
+  TokenType.question: _ternary,
   TokenType.elvis: _elvis,
   TokenType.or: _or,
   TokenType.and: _and,
@@ -82,6 +84,7 @@ class Parser {
     _infixParseFns[TokenType.and] = _parseInfixExpression;
     _infixParseFns[TokenType.or] = _parseInfixExpression;
     _infixParseFns[TokenType.elvis] = _parseElvisExpression;
+    _infixParseFns[TokenType.question] = _parseTernaryExpression;
     _infixParseFns[TokenType.dot] = _parsePropertyAccess;
     _infixParseFns[TokenType.safeAccess] = _parseSafeAccess;
     _infixParseFns[TokenType.lparen] = _parseCallExpression;
@@ -176,6 +179,12 @@ class Parser {
         return _parseForStatement();
       case TokenType.whileKeyword:
         return _parseWhileStatement();
+      case TokenType.tryKeyword:
+        return _parseTryStatement();
+      case TokenType.breakKeyword:
+        return BreakStatement(_curToken);
+      case TokenType.continueKeyword:
+        return ContinueStatement(_curToken);
       case TokenType.fn:
         // Check if it's a declaration (fn name) or closure (fn()
         if (_peekTokenIs(TokenType.ident)) {
@@ -186,14 +195,80 @@ class Parser {
       case TokenType.function:
         return _parseFunctionDeclaration();
       case TokenType.ident:
-        return _parseExpressionStatement();
+        switch (_peekToken.type) {
+          case TokenType.plusEq:
+          case TokenType.minusEq:
+          case TokenType.asteriskEq:
+          case TokenType.slashEq:
+            return _parseCompoundAssignment();
+          case TokenType.plusPlus:
+          case TokenType.minusMinus:
+            return _parseIncDec();
+          default:
+            return _parseExpressionStatement();
+        }
       default:
         return _parseExpressionStatement();
     }
   }
 
-  VarDecl? _parseVarDecl() {
+  /// Desugars `x += e` into `x = x + e` (and -=, *=, /=).
+  Statement _parseCompoundAssignment() {
+    final startToken = _curToken;
+    final name = Identifier(_curToken, _curToken.literal);
+
+    _nextToken(); // move onto the compound-assign operator
+    final opTok = _curToken;
+    final String op;
+    switch (opTok.type) {
+      case TokenType.plusEq:
+        op = '+';
+      case TokenType.minusEq:
+        op = '-';
+      case TokenType.asteriskEq:
+        op = '*';
+      default:
+        op = '/';
+    }
+
+    _nextToken(); // move onto the right-hand expression
+    final right = _parseExpression(_lowest);
+    if (right == null) return ExpressionStatement(startToken, name);
+
+    return Assignment(
+      startToken,
+      name,
+      BinaryExpr(opTok, name, op, right),
+    );
+  }
+
+  /// Desugars `x++` into `x = x + 1` (and `x--` into `x = x - 1`).
+  Statement _parseIncDec() {
+    final startToken = _curToken;
+    final name = Identifier(_curToken, _curToken.literal);
+
+    _nextToken(); // move onto ++ / --
+    final opTok = _curToken;
+    final op = opTok.type == TokenType.minusMinus ? '-' : '+';
+
+    final one = NumberLiteral(const Token(TokenType.number, '1'), 1);
+    return Assignment(
+      startToken,
+      name,
+      BinaryExpr(opTok, name, op, one),
+    );
+  }
+
+  Statement? _parseVarDecl() {
     final token = _curToken;
+
+    // Destructuring: let [a, b] = expr  /  let {a, b} = expr
+    if (_peekTokenIs(TokenType.lbracket)) {
+      return _parseDestructure(token, TokenType.rbracket, true);
+    }
+    if (_peekTokenIs(TokenType.lbrace)) {
+      return _parseDestructure(token, TokenType.rbrace, false);
+    }
 
     if (!_expectPeek(TokenType.ident)) return null;
     final name = Identifier(_curToken, _curToken.literal);
@@ -205,6 +280,33 @@ class Parser {
     if (value == null) return null;
 
     return VarDecl(token, name, value);
+  }
+
+  /// Parses `let [a, b] = expr` (isArray) or `let {a, b} = expr`.
+  Statement? _parseDestructure(Token letTok, TokenType close, bool isArray) {
+    _nextToken(); // cur = opening bracket/brace
+
+    final names = <Identifier>[];
+    if (!_peekTokenIs(close)) {
+      if (!_expectPeek(TokenType.ident)) return null;
+      names.add(Identifier(_curToken, _curToken.literal));
+      while (_peekTokenIs(TokenType.comma)) {
+        _nextToken();
+        if (!_expectPeek(TokenType.ident)) return null;
+        names.add(Identifier(_curToken, _curToken.literal));
+      }
+    }
+
+    if (!_expectPeek(close)) return null;
+    if (!_expectPeek(TokenType.assign)) return null;
+    _nextToken();
+    final value = _parseExpression(_lowest);
+    if (value == null) return null;
+
+    if (isArray) {
+      return ArrayDestructure(letTok, names, value);
+    }
+    return ObjectDestructure(letTok, names, value);
   }
 
   IfStatement? _parseIfStatement() {
@@ -223,12 +325,48 @@ class Parser {
 
     BlockStatement? alternative;
     if (_peekTokenIs(TokenType.elseKeyword)) {
-      _nextToken();
-      if (!_expectPeek(TokenType.lbrace)) return null;
-      alternative = _parseBlockStatement();
+      _nextToken(); // cur = else
+
+      if (_peekTokenIs(TokenType.ifKeyword)) {
+        // else if: parse the nested if and wrap it as the alternative block
+        _nextToken(); // cur = if
+        final nested = _parseIfStatement();
+        alternative = BlockStatement(_curToken, nested == null ? [] : [nested]);
+      } else {
+        if (!_expectPeek(TokenType.lbrace)) return null;
+        alternative = _parseBlockStatement();
+      }
     }
 
     return IfStatement(token, condition, consequence, alternative);
+  }
+
+  /// Parses: try { body } catch [ (e) ] { handler }
+  Statement? _parseTryStatement() {
+    final token = _curToken;
+
+    if (!_expectPeek(TokenType.lbrace)) return null;
+    final body = _parseBlockStatement();
+
+    // Allow a newline between the try block's `}` and `catch`.
+    while (_peekTokenIs(TokenType.newline)) {
+      _nextToken();
+    }
+    if (!_expectPeek(TokenType.catchKeyword)) return null;
+
+    // Optional error variable: catch (e) { ... } or catch { ... }
+    Identifier? catchVar;
+    if (_peekTokenIs(TokenType.lparen)) {
+      _nextToken(); // cur = (
+      if (!_expectPeek(TokenType.ident)) return null;
+      catchVar = Identifier(_curToken, _curToken.literal);
+      if (!_expectPeek(TokenType.rparen)) return null;
+    }
+
+    if (!_expectPeek(TokenType.lbrace)) return null;
+    final catchBlock = _parseBlockStatement();
+
+    return TryStatement(token, body, catchVar, catchBlock);
   }
 
   BlockStatement _parseBlockStatement() {
@@ -463,7 +601,7 @@ class Parser {
 
     _nextToken();
     _skipCurrentNewlines();
-    final exp = _parseExpression(_lowest);
+    final exp = _parseListElement();
     if (exp != null) list.add(exp);
 
     // Skip trailing newlines after each element
@@ -474,7 +612,7 @@ class Parser {
       _skipNewlines(); // skip newlines after comma
       _nextToken();
       _skipCurrentNewlines();
-      final exp = _parseExpression(_lowest);
+      final exp = _parseListElement();
       if (exp != null) list.add(exp);
       _skipNewlines();
     }
@@ -487,6 +625,19 @@ class Parser {
     }
 
     return list;
+  }
+
+  /// Parses one element of an array literal or argument list, allowing a
+  /// spread element (...expr).
+  Expression? _parseListElement() {
+    if (_curTokenIs(TokenType.ellipsis)) {
+      final tok = _curToken;
+      _nextToken();
+      final value = _parseExpression(_lowest);
+      if (value == null) return null;
+      return SpreadExpr(tok, value);
+    }
+    return _parseExpression(_lowest);
   }
 
   Expression? _parseObjectLiteral() {
@@ -595,6 +746,23 @@ class Parser {
     return ElvisExpr(token, left, defaultValue);
   }
 
+  /// Parses `cond ? consequent : alternative` (right-associative).
+  Expression? _parseTernaryExpression(Expression condition) {
+    final token = _curToken;
+
+    _nextToken(); // move onto the consequent
+    final consequent = _parseExpression(_lowest);
+    if (consequent == null) return null;
+
+    if (!_expectPeek(TokenType.colon)) return null;
+
+    _nextToken(); // move onto the alternative
+    final alternative = _parseExpression(_lowest);
+    if (alternative == null) return null;
+
+    return TernaryExpr(token, condition, consequent, alternative);
+  }
+
   Expression? _parseAssignmentExpression(Expression left) {
     final token = _curToken;
     final precedence = _curPrecedence();
@@ -638,7 +806,7 @@ class Parser {
 
     _nextToken();
     _skipCurrentNewlines();
-    final exp = _parseExpression(_lowest);
+    final exp = _parseListElement();
     if (exp == null) return null;
     args.add(exp);
 
@@ -649,7 +817,7 @@ class Parser {
       _skipNewlines();
       _nextToken();
       _skipCurrentNewlines();
-      final exp = _parseExpression(_lowest);
+      final exp = _parseListElement();
       if (exp == null) return null;
       args.add(exp);
       _skipNewlines();

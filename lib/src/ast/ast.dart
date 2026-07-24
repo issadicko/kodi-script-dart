@@ -133,6 +133,63 @@ class WhileStatement extends Statement {
   String tokenLiteral() => token.literal;
 }
 
+/// Break statement: break
+class BreakStatement extends Statement {
+  final Token token;
+
+  BreakStatement(this.token);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Continue statement: continue
+class ContinueStatement extends Statement {
+  final Token token;
+
+  ContinueStatement(this.token);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Try/catch statement: try { body } catch (e) { catchBlock }
+class TryStatement extends Statement {
+  final Token token;
+  final BlockStatement body;
+  final Identifier? catchVar;
+  final BlockStatement catchBlock;
+
+  TryStatement(this.token, this.body, this.catchVar, this.catchBlock);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Array destructuring: let [a, b] = expr
+class ArrayDestructure extends Statement {
+  final Token token;
+  final List<Identifier> names;
+  final Expression value;
+
+  ArrayDestructure(this.token, this.names, this.value);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Object destructuring: let {a, b} = expr
+class ObjectDestructure extends Statement {
+  final Token token;
+  final List<Identifier> names;
+  final Expression value;
+
+  ObjectDestructure(this.token, this.names, this.value);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
 /// Variable identifier.
 class Identifier extends Expression {
   final Token token;
@@ -276,6 +333,30 @@ class ElvisExpr extends Expression {
   final Expression defaultValue;
 
   ElvisExpr(this.token, this.left, this.defaultValue);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Ternary expression: condition ? consequent : alternative
+class TernaryExpr extends Expression {
+  final Token token;
+  final Expression condition;
+  final Expression consequent;
+  final Expression alternative;
+
+  TernaryExpr(this.token, this.condition, this.consequent, this.alternative);
+
+  @override
+  String tokenLiteral() => token.literal;
+}
+
+/// Spread expression: ...expr (used in array literals and call arguments)
+class SpreadExpr extends Expression {
+  final Token token;
+  final Expression value;
+
+  SpreadExpr(this.token, this.value);
 
   @override
   String tokenLiteral() => token.literal;

@@ -188,7 +188,7 @@ void main() {
           .execute();
 
       expect(result.hasErrors, false);
-      expect(result.value, "Hello, I'm Grace 8.0");
+      expect(result.value, "Hello, I'm Grace 8");
     });
 
     test('bind complex script', () {
@@ -205,7 +205,7 @@ void main() {
       final result = KodiScript.builder(source).bind('user', user).execute();
 
       expect(result.hasErrors, false);
-      expect(result.value, "Hello, I'm Henry I am 29.0 years old and I live in Vienna");
+      expect(result.value, "Hello, I'm Henry I am 29 years old and I live in Vienna");
     });
 
     test('bind non-existent method throws error', () {

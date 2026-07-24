@@ -64,17 +64,45 @@ class Lexer {
           tok = Token(TokenType.assign, '=', line: _line, column: startColumn);
         }
       case '+':
-        tok = Token(TokenType.plus, '+', line: _line, column: startColumn);
+        if (_peekChar() == '+') {
+          _readChar();
+          tok = Token(TokenType.plusPlus, '++', line: _line, column: startColumn);
+        } else if (_peekChar() == '=') {
+          _readChar();
+          tok = Token(TokenType.plusEq, '+=', line: _line, column: startColumn);
+        } else {
+          tok = Token(TokenType.plus, '+', line: _line, column: startColumn);
+        }
       case '-':
-        tok = Token(TokenType.minus, '-', line: _line, column: startColumn);
+        if (_peekChar() == '-') {
+          _readChar();
+          tok = Token(TokenType.minusMinus, '--', line: _line, column: startColumn);
+        } else if (_peekChar() == '=') {
+          _readChar();
+          tok = Token(TokenType.minusEq, '-=', line: _line, column: startColumn);
+        } else {
+          tok = Token(TokenType.minus, '-', line: _line, column: startColumn);
+        }
       case '*':
-        tok = Token(TokenType.asterisk, '*', line: _line, column: startColumn);
+        if (_peekChar() == '=') {
+          _readChar();
+          tok = Token(TokenType.asteriskEq, '*=', line: _line, column: startColumn);
+        } else {
+          tok = Token(TokenType.asterisk, '*', line: _line, column: startColumn);
+        }
       case '/':
         if (_peekChar() == '/') {
           _skipLineComment();
           return nextToken();
+        } else if (_peekChar() == '*') {
+          _skipBlockComment();
+          return nextToken();
+        } else if (_peekChar() == '=') {
+          _readChar();
+          tok = Token(TokenType.slashEq, '/=', line: _line, column: startColumn);
+        } else {
+          tok = Token(TokenType.slash, '/', line: _line, column: startColumn);
         }
-        tok = Token(TokenType.slash, '/', line: _line, column: startColumn);
       case '%':
         tok = Token(TokenType.percent, '%', line: _line, column: startColumn);
       case '!':
@@ -120,7 +148,7 @@ class Lexer {
           _readChar();
           tok = Token(TokenType.elvis, '?:', line: _line, column: startColumn);
         } else {
-          tok = Token(TokenType.illegal, _ch, line: _line, column: startColumn);
+          tok = Token(TokenType.question, '?', line: _line, column: startColumn);
         }
       case ',':
         tok = Token(TokenType.comma, ',', line: _line, column: startColumn);
@@ -141,9 +169,20 @@ class Lexer {
       case ']':
         tok = Token(TokenType.rbracket, ']', line: _line, column: startColumn);
       case '.':
-        tok = Token(TokenType.dot, '.', line: _line, column: startColumn);
+        if (_peekChar() == '.') {
+          _readChar(); // consume second '.'
+          if (_peekChar() == '.') {
+            _readChar(); // consume third '.'
+            tok = Token(TokenType.ellipsis, '...', line: _line, column: startColumn);
+          } else {
+            tok = Token(TokenType.illegal, _ch, line: _line, column: startColumn);
+          }
+        } else {
+          tok = Token(TokenType.dot, '.', line: _line, column: startColumn);
+        }
       case '"':
       case "'":
+      case '`':
         final delimiter = _ch;
         final result = _readString(delimiter);
         final type = result.isTemplate ? TokenType.stringTemplate : TokenType.string;
@@ -183,6 +222,24 @@ class Lexer {
 
   void _skipLineComment() {
     while (_ch != '\n' && _ch != '') {
+      _readChar();
+    }
+  }
+
+  /// Skips a /* ... */ block comment (_ch is '/', peek is '*').
+  void _skipBlockComment() {
+    _readChar(); // consume '/'
+    _readChar(); // consume '*'
+    while (_ch != '') {
+      if (_ch == '*' && _peekChar() == '/') {
+        _readChar(); // consume '*'
+        _readChar(); // consume '/'
+        return;
+      }
+      if (_ch == '\n') {
+        _line++;
+        _column = 0;
+      }
       _readChar();
     }
   }
@@ -227,6 +284,8 @@ class Lexer {
             buffer.write('"');
           case "'":
             buffer.write("'");
+          case '`':
+            buffer.write('`');
           case '\\':
             buffer.write('\\');
           case '\$':

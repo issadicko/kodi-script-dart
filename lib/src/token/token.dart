@@ -22,6 +22,14 @@ enum TokenType {
   slash, // /
   percent, // %
 
+  // Compound assignment and increment/decrement
+  plusEq, // +=
+  minusEq, // -=
+  asteriskEq, // *=
+  slashEq, // /=
+  plusPlus, // ++
+  minusMinus, // --
+
   // Comparison
   eq, // ==
   notEq, // !=
@@ -38,6 +46,7 @@ enum TokenType {
   // Null-safety
   safeAccess, // ?.
   elvis, // ?:
+  question, // ?
 
   // Delimiters
   comma, // ,
@@ -50,6 +59,7 @@ enum TokenType {
   lbracket, // [
   rbracket, // ]
   dot, // .
+  ellipsis, // ...
 
   // Keywords
   let,
@@ -63,7 +73,11 @@ enum TokenType {
   inKeyword,
   fn,
   function,
-  whileKeyword;
+  whileKeyword,
+  breakKeyword,
+  continueKeyword,
+  tryKeyword,
+  catchKeyword;
 
   /// Returns true if this token type can end a statement (for ASI).
   bool get canEndStatement => {
@@ -77,6 +91,10 @@ enum TokenType {
         TokenType.rparen,
         TokenType.rbrace,
         TokenType.rbracket,
+        TokenType.plusPlus,
+        TokenType.minusMinus,
+        TokenType.breakKeyword,
+        TokenType.continueKeyword,
       }.contains(this);
 
   /// Returns true if this token type indicates statement continuation.
@@ -123,6 +141,10 @@ class Token {
     'fn': TokenType.fn,
     'function': TokenType.function,
     'while': TokenType.whileKeyword,
+    'break': TokenType.breakKeyword,
+    'continue': TokenType.continueKeyword,
+    'try': TokenType.tryKeyword,
+    'catch': TokenType.catchKeyword,
   };
 
   /// Looks up an identifier to check if it's a keyword.

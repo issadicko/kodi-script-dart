@@ -10,6 +10,39 @@ import '../reactive/rx_list.dart';
 /// Native function signature.
 typedef NativeFunc = Object? Function(List<Object?>);
 
+/// Renders a KodiScript value in canonical form. Shared across the interpreter
+/// (print, string templates, string concatenation) and natives (toString, join)
+/// so that output is identical across language implementations:
+/// - integral numbers print without a trailing ".0" (3, not 3.0)
+/// - arrays print as "[1, 2, 3]"
+/// - objects print as "{a: 1, b: 2}" with keys sorted for determinism
+/// - strings are not quoted (use jsonStringify for quoted output)
+String kodiStringify(Object? value) {
+  if (value == null) return 'null';
+  if (value is String) return value;
+  if (value is bool) return value ? 'true' : 'false';
+  if (value is int) return value.toString();
+  if (value is double) {
+    if (value.isNaN || value.isInfinite) return value.toString();
+    if (value == value.truncateToDouble()) {
+      // Integral value: render without a trailing ".0", mirroring Go/Kotlin.
+      if (value >= -9223372036854775808.0 && value < 9223372036854775808.0) {
+        return value.toInt().toString();
+      }
+      return value.toStringAsFixed(0);
+    }
+    return value.toString();
+  }
+  if (value is List) {
+    return '[${value.map(kodiStringify).join(', ')}]';
+  }
+  if (value is Map) {
+    final keys = value.keys.map((k) => k.toString()).toList()..sort();
+    return '{${keys.map((k) => '$k: ${kodiStringify(value[k])}').join(', ')}}';
+  }
+  return value.toString();
+}
+
 /// Registry of native functions for KodiScript.
 class NativeFunctions {
   final Map<String, NativeFunc> _functions = {};
@@ -103,12 +136,34 @@ class NativeFunctions {
 
     // Array functions
     _functions['sort'] = _nativeSort;
+    _functions['sortBy'] = _nativeSortBy;
     _functions['reverse'] = _nativeReverse;
     _functions['size'] = _nativeSize;
     _functions['first'] = _nativeFirst;
     _functions['last'] = _nativeLast;
     _functions['slice'] = _nativeSlice;
+    _functions['range'] = _nativeRange;
+    _functions['sum'] = _nativeSum;
+    _functions['avg'] = _nativeAvg;
+    _functions['unique'] = _nativeUnique;
+    _functions['flatten'] = _nativeFlatten;
+    _functions['push'] = _nativePush;
+    _functions['concat'] = _nativeConcat;
     _functions['setProperty'] = _nativeSetProperty;
+
+    // Object functions
+    _functions['keys'] = _nativeKeys;
+    _functions['values'] = _nativeValues;
+    _functions['entries'] = _nativeEntries;
+    _functions['has'] = _nativeHas;
+
+    // Number parsing
+    _functions['parseInt'] = _nativeParseInt;
+    _functions['parseFloat'] = _nativeParseFloat;
+
+    // Regex
+    _functions['regexMatch'] = _nativeRegexMatch;
+    _functions['regexReplace'] = _nativeRegexReplace;
 
     // Date/Time functions
     _functions['now'] = _nativeNow;
@@ -133,7 +188,7 @@ class NativeFunctions {
 
   Object? _nativeToString(List<Object?> args) {
     _requireArgs(args, 1, 'toString');
-    return args[0]?.toString() ?? 'null';
+    return kodiStringify(args[0]);
   }
 
   Object? _nativeToNumber(List<Object?> args) {
@@ -191,7 +246,7 @@ class NativeFunctions {
   Object? _nativeJoin(List<Object?> args) {
     _requireArgs(args, 2, 'join');
     final arr = args[0] as List;
-    return arr.map((e) => e?.toString() ?? 'null').join(args[1] as String);
+    return arr.map(kodiStringify).join(args[1] as String);
   }
 
   Object? _nativeReplace(List<Object?> args) {
@@ -486,6 +541,204 @@ class NativeFunctions {
       return arr.sublist(start, end);
     }
     return arr.sublist(start);
+  }
+
+  Object? _nativeSortBy(List<Object?> args) {
+    if (args.length < 2 || args.length > 3) {
+      throw ArgumentError('sortBy requires 2 or 3 arguments (array, field, [order])');
+    }
+    final arr = List.of(args[0] as List);
+    final field = args[1] as String;
+    final ascending = args.length < 3 || (args[2] as String) != 'desc';
+    Object? fieldOf(Object? o) => o is Map ? o[field] : null;
+    arr.sort((a, b) {
+      final cmp = _compareValues(fieldOf(a), fieldOf(b));
+      return ascending ? cmp : -cmp;
+    });
+    return arr;
+  }
+
+  Object? _nativeRange(List<Object?> args) {
+    int start;
+    int end;
+    if (args.length == 1) {
+      start = 0;
+      end = _toDouble(args[0]).toInt();
+    } else if (args.length == 2) {
+      start = _toDouble(args[0]).toInt();
+      end = _toDouble(args[1]).toInt();
+    } else {
+      throw ArgumentError('range requires 1 or 2 arguments');
+    }
+    final result = <Object?>[];
+    for (var i = start; i < end; i++) {
+      result.add(i.toDouble());
+    }
+    return result;
+  }
+
+  Object? _nativeSum(List<Object?> args) {
+    _requireArgs(args, 1, 'sum');
+    final arr = args[0] as List;
+    var total = 0.0;
+    for (final v in arr) {
+      total += _toDouble(v);
+    }
+    return total;
+  }
+
+  Object? _nativeAvg(List<Object?> args) {
+    _requireArgs(args, 1, 'avg');
+    final arr = args[0] as List;
+    if (arr.isEmpty) return 0.0;
+    var total = 0.0;
+    for (final v in arr) {
+      total += _toDouble(v);
+    }
+    return total / arr.length;
+  }
+
+  Object? _nativeUnique(List<Object?> args) {
+    _requireArgs(args, 1, 'unique');
+    final arr = args[0] as List;
+    final seen = <String>{};
+    final result = <Object?>[];
+    for (final v in arr) {
+      if (seen.add(_valueKey(v))) {
+        result.add(v);
+      }
+    }
+    return result;
+  }
+
+  Object? _nativeFlatten(List<Object?> args) {
+    _requireArgs(args, 1, 'flatten');
+    final arr = args[0] as List;
+    final result = <Object?>[];
+    for (final v in arr) {
+      if (v is List) {
+        result.addAll(v);
+      } else {
+        result.add(v);
+      }
+    }
+    return result;
+  }
+
+  Object? _nativePush(List<Object?> args) {
+    if (args.length < 2) {
+      throw ArgumentError('push requires at least 2 arguments (array, item...)');
+    }
+    final arr = args[0] as List;
+    // Non-mutating: return a new array with the items appended.
+    return [...arr, ...args.sublist(1)];
+  }
+
+  Object? _nativeConcat(List<Object?> args) {
+    final result = <Object?>[];
+    for (final a in args) {
+      if (a is! List) {
+        throw ArgumentError('concat requires array arguments');
+      }
+      result.addAll(a);
+    }
+    return result;
+  }
+
+  // ============ Object functions ============
+
+  Object? _nativeKeys(List<Object?> args) {
+    _requireArgs(args, 1, 'keys');
+    final m = args[0] as Map;
+    return _sortedKeys(m).cast<Object?>().toList();
+  }
+
+  Object? _nativeValues(List<Object?> args) {
+    _requireArgs(args, 1, 'values');
+    final m = args[0] as Map;
+    return [for (final k in _sortedKeys(m)) m[k]];
+  }
+
+  Object? _nativeEntries(List<Object?> args) {
+    _requireArgs(args, 1, 'entries');
+    final m = args[0] as Map;
+    return [for (final k in _sortedKeys(m)) <Object?>[k, m[k]]];
+  }
+
+  Object? _nativeHas(List<Object?> args) {
+    _requireArgs(args, 2, 'has');
+    final coll = args[0];
+    if (coll is Map) {
+      final key = args[1] as String;
+      return coll.containsKey(key);
+    }
+    if (coll is List) {
+      final target = _valueKey(args[1]);
+      for (final item in coll) {
+        if (_valueKey(item) == target) return true;
+      }
+      return false;
+    }
+    throw ArgumentError('has requires an object or array as first argument');
+  }
+
+  // ============ Number parsing ============
+
+  Object? _nativeParseInt(List<Object?> args) {
+    _requireArgs(args, 1, 'parseInt');
+    final v = args[0];
+    if (v is double) return v.truncateToDouble();
+    if (v is int) return v.toDouble();
+    if (v is String) {
+      final f = double.tryParse(v.trim());
+      if (f == null) throw ArgumentError("cannot parse '$v' as integer");
+      return f.truncateToDouble();
+    }
+    throw ArgumentError('parseInt requires a string or number');
+  }
+
+  Object? _nativeParseFloat(List<Object?> args) {
+    _requireArgs(args, 1, 'parseFloat');
+    final v = args[0];
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) {
+      final f = double.tryParse(v.trim());
+      if (f == null) throw ArgumentError("cannot parse '$v' as number");
+      return f;
+    }
+    throw ArgumentError('parseFloat requires a string or number');
+  }
+
+  // ============ Regex ============
+
+  Object? _nativeRegexMatch(List<Object?> args) {
+    _requireArgs(args, 2, 'regexMatch');
+    final s = args[0] as String;
+    final pattern = args[1] as String;
+    return RegExp(pattern).hasMatch(s);
+  }
+
+  Object? _nativeRegexReplace(List<Object?> args) {
+    _requireArgs(args, 3, 'regexReplace');
+    final s = args[0] as String;
+    final pattern = args[1] as String;
+    final repl = args[2] as String;
+    return s.replaceAll(RegExp(pattern), repl);
+  }
+
+  static List<String> _sortedKeys(Map m) {
+    final keys = m.keys.map((k) => k.toString()).toList()..sort();
+    return keys;
+  }
+
+  static String _valueKey(Object? v) {
+    if (v == null) return 'null';
+    if (v is int) return 'num:${v.toDouble()}';
+    if (v is double) return 'num:$v';
+    if (v is String) return 'str:$v';
+    if (v is bool) return 'bool:$v';
+    return '${v.runtimeType}:$v';
   }
 
   Object? _nativeSetProperty(List<Object?> args) {

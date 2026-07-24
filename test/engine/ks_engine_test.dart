@@ -434,8 +434,8 @@ void main() {
       var ui = buildResult.value as Map<String, dynamic>;
       var children = ui['children'] as List;
       var textWidget = children[0] as Map<String, dynamic>;
-      // Note: KodiScript numbers are doubles, so 0 becomes "0.0"
-      expect(textWidget['props']['content'], equals('Counter: 0.0'));
+      // Canonical formatting renders whole numbers without a trailing ".0".
+      expect(textWidget['props']['content'], equals('Counter: 0'));
 
       // Increment
       await engine.invoke('increment');
@@ -445,7 +445,7 @@ void main() {
       ui = buildResult.value as Map<String, dynamic>;
       children = ui['children'] as List;
       textWidget = children[0] as Map<String, dynamic>;
-      expect(textWidget['props']['content'], equals('Counter: 1.0'));
+      expect(textWidget['props']['content'], equals('Counter: 1'));
     });
 
     test('should support Obx-style partial rebuilds', () async {

@@ -118,6 +118,29 @@ class ReturnValue {
   ReturnValue(this.value);
 }
 
+/// Signals a `break` out of the nearest enclosing loop.
+class BreakValue {
+  const BreakValue();
+}
+
+/// Signals a `continue` to the next iteration of the nearest loop.
+class ContinueValue {
+  const ContinueValue();
+}
+
+const _breakSignal = BreakValue();
+const _continueSignal = ContinueValue();
+
+/// Bounds nested user-function calls, guarding against unbounded recursion
+/// exhausting the native stack.
+const int _maxCallDepth = 1000;
+
+/// Exception thrown when the function call depth limit is exceeded.
+class StackOverflowExceeded implements Exception {
+  @override
+  String toString() => 'maximum call depth exceeded';
+}
+
 /// Function value (user defined).
 class FunctionValue {
   final List<Identifier> parameters;
@@ -152,10 +175,18 @@ class Interpreter {
   int _opCount = 0;
   int _maxOps = 0; // 0 = unlimited
   int _deadline = 0; // 0 = no timeout
+  int _callDepth = 0; // current user-function call depth (recursion guard)
+  void Function(String)? _outputSink; // routes print() output when set
 
   Interpreter({Environment? env, NativeFunctions? natives})
       : _env = env ?? Environment(),
         _natives = natives ?? NativeFunctions.shared;
+
+  /// Routes print() output to the given callback instead of the default logger.
+  /// Output is still captured and available via [getOutput].
+  void setOutputSink(void Function(String) sink) {
+    _outputSink = sink;
+  }
 
   factory Interpreter.withVariables(Map<String, Object?> variables) {
     final env = Environment();
@@ -197,10 +228,15 @@ class Interpreter {
   Object? eval(Program program) {
     Object? result;
     for (final stmt in program.statements) {
-      result = _evalStatement(stmt);
-      if (result is ReturnValue) {
-        return result.value;
+      final val = _evalStatement(stmt);
+      if (val is ReturnValue) {
+        return val.value;
       }
+      // Ignore a stray break/continue used outside any loop.
+      if (val is BreakValue || val is ContinueValue) {
+        continue;
+      }
+      result = val;
     }
     return result;
   }
@@ -240,6 +276,10 @@ class Interpreter {
         // Use update to modify variable in its original scope
         _env.update(stmt.name.value, value);
         return value;
+      case ArrayDestructure():
+        return _evalArrayDestructure(stmt);
+      case ObjectDestructure():
+        return _evalObjectDestructure(stmt);
       case ExpressionStatement():
         return _evalExpression(stmt.expression);
       case IfStatement():
@@ -253,11 +293,73 @@ class Interpreter {
         return _evalForStatement(stmt);
       case WhileStatement():
         return _evalWhileStatement(stmt);
+      case TryStatement():
+        return _evalTryStatement(stmt);
+      case BreakStatement():
+        return _breakSignal;
+      case ContinueStatement():
+        return _continueSignal;
       case FunctionDeclaration():
         final fn = FunctionValue(stmt.parameters, stmt.body, _env);
         _env.set(stmt.name.value, fn);
         return null; // Function declaration statement returns null
     }
+  }
+
+  Object? _evalArrayDestructure(ArrayDestructure stmt) {
+    final value = _evalExpression(stmt.value);
+    if (value is! List) {
+      throw Exception('cannot destructure non-array value (${value?.runtimeType})');
+    }
+    for (var idx = 0; idx < stmt.names.length; idx++) {
+      _env.set(stmt.names[idx].value, idx < value.length ? value[idx] : null);
+    }
+    return value;
+  }
+
+  Object? _evalObjectDestructure(ObjectDestructure stmt) {
+    final value = _evalExpression(stmt.value);
+    if (value is! Map) {
+      throw Exception('cannot destructure non-object value (${value?.runtimeType})');
+    }
+    for (final name in stmt.names) {
+      _env.set(name.value, value[name.value]);
+    }
+    return value;
+  }
+
+  /// Runs the protected block; on a (non-limit) runtime error it binds the
+  /// error message to the catch variable and runs the handler.
+  Object? _evalTryStatement(TryStatement stmt) {
+    try {
+      return _evalBlockStatement(stmt.body);
+    } catch (e) {
+      // Timeout / operation-limit errors are not catchable (mirrors Go).
+      if (e is TimeoutException || e is MaxOperationsExceeded) {
+        rethrow;
+      }
+      if (stmt.catchVar != null) {
+        _env.set(stmt.catchVar!.value, _errorMessage(e));
+      }
+      return _evalBlockStatement(stmt.catchBlock);
+    }
+  }
+
+  /// Produces a clean error message for a catch binding, stripping Dart's
+  /// "Exception: " / "ArgumentError: " prefixes for cross-engine parity.
+  static String _errorMessage(Object e) {
+    var msg = e.toString();
+    for (final prefix in const [
+      'Exception: ',
+      'ArgumentError: ',
+      'Invalid argument(s): ',
+      'FormatException: ',
+    ]) {
+      if (msg.startsWith(prefix)) {
+        return msg.substring(prefix.length);
+      }
+    }
+    return msg;
   }
 
   Object? _evalIfStatement(IfStatement stmt) {
@@ -292,6 +394,12 @@ class Interpreter {
       if (value is ReturnValue) {
         return value;
       }
+      if (value is BreakValue) {
+        return result;
+      }
+      if (value is ContinueValue) {
+        continue;
+      }
       result = value;
     }
 
@@ -320,6 +428,12 @@ class Interpreter {
       if (value is ReturnValue) {
         return value;
       }
+      if (value is BreakValue) {
+        return result;
+      }
+      if (value is ContinueValue) {
+        continue;
+      }
       result = value;
     }
 
@@ -330,7 +444,8 @@ class Interpreter {
     Object? result;
     for (final stmt in block.statements) {
       result = _evalStatement(stmt);
-      if (result is ReturnValue) {
+      // Propagate return/break/continue signals up to the nearest handler.
+      if (result is ReturnValue || result is BreakValue || result is ContinueValue) {
         return result;
       }
     }
@@ -340,12 +455,7 @@ class Interpreter {
   String _evalStringTemplate(StringTemplate tmpl) {
     final buffer = StringBuffer();
     for (final part in tmpl.parts) {
-      final value = _evalExpression(part);
-      if (value == null) {
-        buffer.write('null');
-      } else {
-        buffer.write(value.toString());
-      }
+      buffer.write(kodiStringify(_evalExpression(part)));
     }
     return buffer.toString();
   }
@@ -380,17 +490,42 @@ class Interpreter {
         return _evalSafeAccess(expr);
       case ElvisExpr():
         return _evalElvisExpr(expr);
+      case TernaryExpr():
+        return _isTruthy(_evalExpression(expr.condition))
+            ? _evalExpression(expr.consequent)
+            : _evalExpression(expr.alternative);
+      case SpreadExpr():
+        // A bare spread outside an array/argument list is not meaningful.
+        throw Exception('spread operator is only valid in arrays or call arguments');
       case PropertyAccessExpr():
         return _evalPropertyAccess(expr);
       case CallExpr():
         return _evalCallExpr(expr);
       case ArrayLiteral():
-        return expr.elements.map((e) => _evalExpression(e)).toList();
+        return _evalElements(expr.elements);
       case ObjectLiteral():
         return expr.pairs.map((k, v) => MapEntry(k, _evalExpression(v)));
       case IndexExpr():
         return _evalIndexExpression(expr);
     }
+  }
+
+  /// Evaluates a list of expressions, expanding any `...spread` elements.
+  List<Object?> _evalElements(List<Expression> exprs) {
+    final result = <Object?>[];
+    for (final el in exprs) {
+      if (el is SpreadExpr) {
+        final v = _evalExpression(el.value);
+        if (v is List) {
+          result.addAll(v);
+        } else {
+          throw Exception('spread operator requires an array, got ${v?.runtimeType}');
+        }
+      } else {
+        result.add(_evalExpression(el));
+      }
+    }
+    return result;
   }
 
   Object? _evalAssignment(Expression left, Expression rightExpr) {
@@ -508,9 +643,9 @@ class Interpreter {
   }
 
   Object? _evalPlus(Object? left, Object? right) {
-    if (left is String || right is String) {
-      return '${left ?? "null"}${right ?? "null"}';
-    }
+    // String concatenation: the non-string operand is canonically stringified.
+    if (left is String) return left + kodiStringify(right);
+    if (right is String) return kodiStringify(left) + right;
     return _toNumber(left) + _toNumber(right);
   }
 
@@ -543,17 +678,21 @@ class Interpreter {
 
   Object? _evalPropertyAccess(PropertyAccessExpr expr) {
     final obj = _evalExpression(expr.obj);
-    if (obj == null) {
-      throw Exception("cannot access property '${expr.property.value}' on null");
-    }
+    return _resolveMember(obj, expr.property.value);
+  }
 
-    final prop = expr.property.value;
+  /// Resolves a member (`prop`) on an already-evaluated receiver. Shared by
+  /// plain property access and by method-call dispatch (step 4).
+  Object? _resolveMember(Object? obj, String prop) {
+    if (obj == null) {
+      throw Exception("cannot access property '$prop' on null");
+    }
 
     // First check for map access (existing behavior)
     if (obj is Map) {
       return obj[prop];
     }
-    
+
     // Check for List access
     if (obj is List) {
       final listObj = obj;
@@ -652,116 +791,249 @@ class Interpreter {
     return _reflectivePropertyAccess(obj, prop);
   }
 
+  /// Interpreter builtins that need the interpreter itself (to capture output
+  /// or to call back into user functions). Mirrors Go's interpBuiltins.
+  static const Set<String> _interpBuiltins = {
+    'print',
+    'map',
+    'filter',
+    'reduce',
+    'find',
+    'findIndex',
+    'some',
+    'every',
+    'flatMap',
+  };
+
   Object? _evalCallExpr(CallExpr expr) {
     final funcExpr = expr.function;
 
-    // Special print handling
-    if (funcExpr is Identifier && funcExpr.value == 'print') {
-      final args = expr.arguments.map((a) => _evalExpression(a)).toList();
-      for (final arg in args) {
-        final output = arg?.toString() ?? 'null';
-        log(output, name: 'KodiScript');
-        _env.addOutput(output);
-      }
-      return null;
+    // Method-call syntax: receiver.method(args)
+    if (funcExpr is PropertyAccessExpr) {
+      return _evalMethodCall(funcExpr, expr.arguments);
     }
 
-    // Special handling for higher-order array functions
-    if (funcExpr is Identifier) {
-      switch (funcExpr.value) {
-        case 'map':
-          return _evalMapFunction(expr);
-        case 'filter':
-          return _evalFilterFunction(expr);
-        case 'reduce':
-          return _evalReduceFunction(expr);
-        case 'find':
-          return _evalFindFunction(expr);
-        case 'findIndex':
-          return _evalFindIndexFunction(expr);
+    // Interpreter builtins (print, map, filter, ...), unless overridden by a
+    // user binding or a registered native of the same name.
+    if (funcExpr is Identifier && _interpBuiltins.contains(funcExpr.value)) {
+      final (_, inEnv) = _env.get(funcExpr.value);
+      if (!inEnv && _natives.get(funcExpr.value) == null) {
+        return _callBuiltin(funcExpr.value, _evalArgs(expr.arguments));
       }
     }
 
+    // Default: evaluate the callee then apply it (user functions and natives).
     final function = _evalExpression(funcExpr);
-    final args = expr.arguments.map((a) => _evalExpression(a)).toList();
-
+    final args = _evalArgs(expr.arguments);
     return _applyFunction(function, args);
   }
 
-  Object? _evalMapFunction(CallExpr expr) {
-    if (expr.arguments.length < 2) {
-      throw Exception('map requires 2 arguments: array and function');
+  /// Implements method-call syntax: receiver.method(args). Mirrors Go's
+  /// evalMethodCall dispatch order.
+  Object? _evalMethodCall(PropertyAccessExpr pa, List<Expression> argExprs) {
+    final receiver = _evalExpression(pa.obj);
+    final method = pa.property.value;
+    final args = _evalArgs(argExprs);
+
+    // 1. A callable stored under that key on an object wins (obj.fn()).
+    if (receiver is Map) {
+      final v = receiver[method];
+      if (_isCallable(v)) {
+        return _applyFunction(v, args);
+      }
     }
-    final arrVal = _evalExpression(expr.arguments[0]);
-    if (arrVal is! List) return <Object?>[];
-    final fnVal = _evalExpression(expr.arguments[1]);
-    return arrVal.asMap().entries.map((e) => 
-      _applyFunction(fnVal, [e.value, e.key.toDouble()])
-    ).toList();
+
+    // 2. Interpreter builtin invoked as a method: prepend the receiver.
+    if (_interpBuiltins.contains(method)) {
+      return _callBuiltin(method, [receiver, ...args]);
+    }
+
+    // 3. Registry native invoked as a method: prepend the receiver.
+    final nfn = _natives.get(method);
+    if (nfn != null) {
+      return nfn([receiver, ...args]);
+    }
+
+    // 4. Bound object / List helpers via reflection.
+    if (receiver == null) {
+      throw Exception("cannot call method '$method' on null");
+    }
+    if (receiver is! Map) {
+      final member = _resolveMember(receiver, method);
+      return _applyFunction(member, args);
+    }
+
+    throw Exception("undefined method '$method'");
   }
 
-  Object? _evalFilterFunction(CallExpr expr) {
-    if (expr.arguments.length < 2) {
+  /// Evaluates a list of argument expressions, expanding any ...spread.
+  List<Object?> _evalArgs(List<Expression> argExprs) => _evalElements(argExprs);
+
+  static bool _isCallable(Object? v) =>
+      v is FunctionValue || v is NativeFunctionValue;
+
+  Object? _callBuiltin(String name, List<Object?> args) {
+    switch (name) {
+      case 'print':
+        return _builtinPrint(args);
+      case 'map':
+        return _builtinMap(args);
+      case 'filter':
+        return _builtinFilter(args);
+      case 'reduce':
+        return _builtinReduce(args);
+      case 'find':
+        return _builtinFind(args);
+      case 'findIndex':
+        return _builtinFindIndex(args);
+      case 'some':
+        return _builtinSome(args);
+      case 'every':
+        return _builtinEvery(args);
+      case 'flatMap':
+        return _builtinFlatMap(args);
+      default:
+        throw Exception('unknown builtin: $name');
+    }
+  }
+
+  Object? _builtinPrint(List<Object?> args) {
+    for (final arg in args) {
+      final output = kodiStringify(arg);
+      if (_outputSink != null) {
+        _outputSink!(output);
+      } else {
+        log(output, name: 'KodiScript');
+      }
+      _env.addOutput(output);
+    }
+    return null;
+  }
+
+  Object? _builtinMap(List<Object?> args) {
+    if (args.length < 2) {
+      throw Exception('map requires 2 arguments: array and function');
+    }
+    final arr = args[0];
+    if (arr is! List) return <Object?>[];
+    final fn = args[1];
+    return [
+      for (var i = 0; i < arr.length; i++)
+        _applyFunction(fn, [arr[i], i.toDouble()])
+    ];
+  }
+
+  Object? _builtinFilter(List<Object?> args) {
+    if (args.length < 2) {
       throw Exception('filter requires 2 arguments: array and function');
     }
-    final arrVal = _evalExpression(expr.arguments[0]);
-    if (arrVal is! List) return <Object?>[];
-    final fnVal = _evalExpression(expr.arguments[1]);
+    final arr = args[0];
+    if (arr is! List) return <Object?>[];
+    final fn = args[1];
     final result = <Object?>[];
-    for (var i = 0; i < arrVal.length; i++) {
-      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
-        result.add(arrVal[i]);
+    for (var i = 0; i < arr.length; i++) {
+      if (_isTruthy(_applyFunction(fn, [arr[i], i.toDouble()]))) {
+        result.add(arr[i]);
       }
     }
     return result;
   }
 
-  Object? _evalReduceFunction(CallExpr expr) {
-    if (expr.arguments.length < 3) {
+  Object? _builtinReduce(List<Object?> args) {
+    if (args.length < 3) {
       throw Exception('reduce requires 3 arguments: array, function, and initial value');
     }
-    final arrVal = _evalExpression(expr.arguments[0]);
-    if (arrVal is! List) return null;
-    final fnVal = _evalExpression(expr.arguments[1]);
-    var accumulator = _evalExpression(expr.arguments[2]);
-    for (var i = 0; i < arrVal.length; i++) {
-      accumulator = _applyFunction(fnVal, [accumulator, arrVal[i], i.toDouble()]);
+    final arr = args[0];
+    if (arr is! List) return null;
+    final fn = args[1];
+    var accumulator = args[2];
+    for (var i = 0; i < arr.length; i++) {
+      accumulator = _applyFunction(fn, [accumulator, arr[i], i.toDouble()]);
     }
     return accumulator;
   }
 
-  Object? _evalFindFunction(CallExpr expr) {
-    if (expr.arguments.length < 2) {
+  Object? _builtinFind(List<Object?> args) {
+    if (args.length < 2) {
       throw Exception('find requires 2 arguments: array and function');
     }
-    final arrVal = _evalExpression(expr.arguments[0]);
-    if (arrVal is! List) return null;
-    final fnVal = _evalExpression(expr.arguments[1]);
-    for (var i = 0; i < arrVal.length; i++) {
-      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
-        return arrVal[i];
+    final arr = args[0];
+    if (arr is! List) return null;
+    final fn = args[1];
+    for (var i = 0; i < arr.length; i++) {
+      if (_isTruthy(_applyFunction(fn, [arr[i], i.toDouble()]))) {
+        return arr[i];
       }
     }
     return null;
   }
 
-  Object? _evalFindIndexFunction(CallExpr expr) {
-    if (expr.arguments.length < 2) {
+  Object? _builtinFindIndex(List<Object?> args) {
+    if (args.length < 2) {
       throw Exception('findIndex requires 2 arguments: array and function');
     }
-    final arrVal = _evalExpression(expr.arguments[0]);
-    if (arrVal is! List) return -1.0;
-    final fnVal = _evalExpression(expr.arguments[1]);
-    for (var i = 0; i < arrVal.length; i++) {
-      if (_isTruthy(_applyFunction(fnVal, [arrVal[i], i.toDouble()]))) {
+    final arr = args[0];
+    if (arr is! List) return -1.0;
+    final fn = args[1];
+    for (var i = 0; i < arr.length; i++) {
+      if (_isTruthy(_applyFunction(fn, [arr[i], i.toDouble()]))) {
         return i.toDouble();
       }
     }
     return -1.0;
   }
 
+  Object? _builtinSome(List<Object?> args) {
+    if (args.length < 2) {
+      throw Exception('some requires 2 arguments: array and function');
+    }
+    final arr = args[0];
+    if (arr is! List) return false;
+    final fn = args[1];
+    for (var i = 0; i < arr.length; i++) {
+      if (_isTruthy(_applyFunction(fn, [arr[i], i.toDouble()]))) return true;
+    }
+    return false;
+  }
+
+  Object? _builtinEvery(List<Object?> args) {
+    if (args.length < 2) {
+      throw Exception('every requires 2 arguments: array and function');
+    }
+    final arr = args[0];
+    if (arr is! List) return true;
+    final fn = args[1];
+    for (var i = 0; i < arr.length; i++) {
+      if (!_isTruthy(_applyFunction(fn, [arr[i], i.toDouble()]))) return false;
+    }
+    return true;
+  }
+
+  Object? _builtinFlatMap(List<Object?> args) {
+    if (args.length < 2) {
+      throw Exception('flatMap requires 2 arguments: array and function');
+    }
+    final arr = args[0];
+    if (arr is! List) return <Object?>[];
+    final fn = args[1];
+    final result = <Object?>[];
+    for (var i = 0; i < arr.length; i++) {
+      final val = _applyFunction(fn, [arr[i], i.toDouble()]);
+      if (val is List) {
+        result.addAll(val);
+      } else {
+        result.add(val);
+      }
+    }
+    return result;
+  }
+
   Object? _applyFunction(Object? fn, List<Object?> args) {
     if (fn is FunctionValue) {
+      if (_callDepth >= _maxCallDepth) {
+        throw StackOverflowExceeded();
+      }
+      _callDepth++;
       final extendedEnv = Environment(fn.env);
       for (var i = 0; i < fn.parameters.length; i++) {
         final val = (i < args.length) ? args[i] : null;
@@ -773,9 +1045,12 @@ class Interpreter {
       try {
         final result = _evalBlockStatement(fn.body);
         if (result is ReturnValue) return result.value;
+        // A stray break/continue must not escape the function as a value.
+        if (result is BreakValue || result is ContinueValue) return null;
         return result;
       } finally {
         _env = previousEnv;
+        _callDepth--;
       }
     }
 

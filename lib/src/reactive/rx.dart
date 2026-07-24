@@ -14,7 +14,7 @@ export 'computed.dart';
 /// counter.set(5)       // Set the value
 /// counter.update(fn)   // Update via function
 /// ```
-class Rx<T> implements KodiBindable {
+class Rx<T> implements KodiBindable, KodiAssignable {
   T _value;
   final List<void Function()> _listeners = [];
 
@@ -36,6 +36,15 @@ class Rx<T> implements KodiBindable {
       _value = newValue;
       notifyListeners();
     }
+  }
+  
+  // ============ KodiAssignable Implementation ============
+
+  @override
+  void assign(Object? newValue) {
+    // When script does "varName = newValue", we update the internal value
+    // instead of replacing the object.
+    value = newValue as T;
   }
 
   /// Adds a listener that will be called when the value changes.

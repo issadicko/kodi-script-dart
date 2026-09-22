@@ -610,6 +610,7 @@ class Parser {
     while (_peekTokenIs(TokenType.comma)) {
       _nextToken(); // consume comma
       _skipNewlines(); // skip newlines after comma
+      if (_peekTokenIs(end)) break; // trailing comma
       _nextToken();
       _skipCurrentNewlines();
       final exp = _parseListElement();
@@ -815,6 +816,7 @@ class Parser {
     while (_peekTokenIs(TokenType.comma)) {
       _nextToken(); // consume comma
       _skipNewlines();
+      if (_peekTokenIs(TokenType.rparen)) break; // trailing comma
       _nextToken();
       _skipCurrentNewlines();
       final exp = _parseListElement();

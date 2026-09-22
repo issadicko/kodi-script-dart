@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Array literals and call arguments accept a trailing comma, so a literal can be
+  laid out one element per line (objects already did).
+
 ## 0.2.0
 
 ### Breaking Changes
